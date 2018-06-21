@@ -1,0 +1,29 @@
+{
+  // https://www.typescriptlang.org/docs/handbook/tsconfig-json.html
+  // https://www.typescriptlang.org/docs/handbook/compiler-options.html
+  "compilerOptions": {
+    "strict": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "target": "es5",
+    "module": "commonjs",
+    "importHelpers": true,
+    "noEmitOnError": true,
+    "declaration": true,
+    "sourceMap": true,
+    "lib": [
+      "es5",
+      "es2015"
+    ],
+    "baseUrl": "./src/lib",
+    "outDir": "./dist",
+    "typeRoots": [
+      "./node_modules/@types",
+      "./@types"
+    ]
+  },
+  "files": [
+    "./src/lib/index.ts"
+  ]
+}

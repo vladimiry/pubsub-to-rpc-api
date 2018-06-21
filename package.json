@@ -1,0 +1,64 @@
+{
+  "name": "pubsub-to-stream-api",
+  "version": "0.1.0",
+  "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
+  "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
+  "license": "MIT",
+  "repository": "git@github.com:vladimiry/pubsub-to-stream-api.git",
+  "keywords": [
+    "pubsub",
+    "rxjs",
+    "stream",
+    "api"
+  ],
+  "main": "./dist/index.js",
+  "scripts": {
+    "example:test": "cross-env TS_NODE_PROJECT=./src/example/tsconfig.json ava --verbose \"./src/example/**/*.{spec,test}.ts\"",
+    "example:start": "cross-env TS_NODE_PROJECT=./src/example/tsconfig.json ./node_modules/.bin/ts-node src/example/readme/index.ts",
+    "example:compile": "tsc --listEmittedFiles -p ./src/example/tsconfig.json --outDir ./output",
+    "example:compile:watch": "tsc -w -p ./src/example/tsconfig.json --outDir ./output",
+    "lib:compile": "tsc --listEmittedFiles -p ./src/lib/tsconfig.json",
+    "lib:compile:watch": "tsc -w -p ./src/lib/tsconfig.json",
+    "output:clean": "rimraf ./output",
+    "dist:clean": "rimraf ./dist",
+    "dist": "npm-run-all dist:clean lint lib:compile test",
+    "lint:lib": "tslint -p ./src/lib/tsconfig.json -c ./tslint.json \"./src/{lib,@types}/**/*.ts\"",
+    "lint:example": "tslint -p ./src/example/tsconfig.json -c ./src/example/tslint.json \"./src/example/**/*.ts\"",
+    "lint:test": "tslint -p ./test/tsconfig.json -c ./test/tslint.json \"./test/**/*.ts\"",
+    "lint": "npm-run-all lint:lib lint:test lint:example",
+    "test": "cross-env TS_NODE_PROJECT=./test/tsconfig.json ava --verbose \"./test/**/*.{spec,test}.ts\""
+  },
+  "ava": {
+    "compileEnhancements": false,
+    "extensions": [
+      "ts"
+    ],
+    "require": [
+      "ts-node/register"
+    ]
+  },
+  "dependencies": {
+    "deserialize-error": "^0.0.3",
+    "rxjs": "^6.2.1",
+    "serializerr": "^1.0.3",
+    "tslib": "^1.9.2",
+    "uuid-browser": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/bluebird": "^3.5.20",
+    "@types/eventemitter3": "^2.0.2",
+    "@types/node": "^10.3.3",
+    "ava": "^1.0.0-beta.6",
+    "cross-env": "^5.2.0",
+    "eventemitter3": "^3.1.0",
+    "maths.ts": "^0.0.8",
+    "node-http-ping": "^0.3.1",
+    "npm-run-all": "^4.1.3",
+    "pubsub-to-stream-api": "^0.1.0",
+    "rimraf": "^2.6.2",
+    "ts-node": "^6.1.2",
+    "tslint": "^5.10.0",
+    "tslint-rules-bunch": "^0.0.4",
+    "typescript": "^2.9.2"
+  }
+}
