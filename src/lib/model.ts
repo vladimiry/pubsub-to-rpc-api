@@ -9,11 +9,11 @@ export type Output = AnyType | never;
 
 type OutputWrapper<T extends Output> = Observable<T>;
 
-export type Action<I extends Input = Input,
-    O extends Output = Output,
-    R = OutputWrapper<O>> = (arg: I) => R;
+export type Action<I extends Input = Input, O extends Output = Output, R = OutputWrapper<O>> = (arg: I) => R;
 
-export type ActionsRecord<K extends string> = Record<K, Action>;
+export type ActionWithoutInput<O extends Output = Output, R = OutputWrapper<O>> = () => R;
+
+export type ActionsRecord<K extends string> = Record<K, Action | ActionWithoutInput>;
 
 export type PayloadUid = string;
 
@@ -21,7 +21,7 @@ export interface RequestPayload<Name> {
     uid: PayloadUid;
     type: "request";
     name: Name;
-    data: Input;
+    data?: Input;
 }
 
 export type ResponsePayload<Name, O> =
@@ -41,10 +41,7 @@ export interface EventEmitter {
     emit(event: string, ...args: AnyType[]): boolean;
 }
 
-export type RequestResolver = (...args: AnyType[]) => {
-    payload: AnyType;
-    emitter: EventEmitter;
-};
+export type CombinedEventEmitter = EventListener & EventEmitter;
 
 export interface Emitters {
     emitter: EventEmitter;
@@ -52,6 +49,11 @@ export interface Emitters {
 }
 
 export type EmittersResolver = () => Emitters;
+
+export type RequestResolver = (...args: AnyType[]) => {
+    payload: AnyType;
+    emitter: EventEmitter;
+};
 
 export interface CallOptions {
     listenChannel?: string;

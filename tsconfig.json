@@ -2,13 +2,15 @@
   // https://www.typescriptlang.org/docs/handbook/tsconfig-json.html
   // https://www.typescriptlang.org/docs/handbook/compiler-options.html
   "compilerOptions": {
-    "strict": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
     "target": "es5",
     "module": "commonjs",
     "importHelpers": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    // "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "noEmitOnError": true,
     "declaration": true,
     "sourceMap": true,

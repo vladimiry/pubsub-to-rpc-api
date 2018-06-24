@@ -1,29 +1,35 @@
+import sinon from "sinon";
+import uuid from "uuid-browser";
 import {delay, map, take} from "rxjs/operators";
+import {EMPTY, interval, merge, of, throwError} from "rxjs";
 import {EventEmitter} from "eventemitter3";
-import {interval, merge, of, throwError} from "rxjs";
 import {test} from "ava";
 
 import {Model, Service} from "../dist/index";
 
-test.cb("base", (t) => {
-    t.plan(3);
+// TODO test a whole emitter|listener.on|off|emit cycle of provider and client
 
-    const service = new Service<{
+test("calling 2 methods", async (t) => {
+    interface Api {
         method1: Model.Action<{ input1: string }, { output1: number }>;
         method2: Model.Action<number, { output2: number }>;
-    }>({channel: "channel-123"});
+    }
+
+    const channel = randomStr();
+    const service = new Service<Api>({channel});
     const providerEmitters = {emitter: new EventEmitter(), listener: new EventEmitter()};
-    const emitters = {emitter: providerEmitters.listener, listener: providerEmitters.emitter};
-    const method1Input = {input1: "345"};
+    const clientEmitters = {emitter: providerEmitters.listener, listener: providerEmitters.emitter};
+    const method1Input = {input1: randomStr()};
     const method1Expected = {output1: Number(method1Input.input1)};
     const method2Input = 123;
     const method2ExpectedItems = [0, 1, 2].map((i) => ({output2: method2Input * i}));
-    const method2ActualItems: Array<{ output2: number }> = [];
-    const client = service.caller(emitters);
+    const clientEmitterSpy = sinon.spy(clientEmitters.emitter, "emit");
+    const providerEmitterSpy = sinon.spy(providerEmitters.emitter, "emit");
+    const client = service.caller(clientEmitters);
 
     service.register(
         {
-            method1: ({input1: val}) => of({output1: Number(val)}),
+            method1: (val) => of(method1Expected),
             method2: (val) => interval(150).pipe(
                 take(3),
                 map((v) => ({output2: val * v})),
@@ -35,34 +41,41 @@ test.cb("base", (t) => {
         },
     );
 
-    merge(
+    await merge(
         client("method1")(method1Input),
         client("method2")(method2Input),
-    ).subscribe(
-        (value) => {
-            if ("output1" in value) {
-                t.deepEqual(value, method1Expected);
-            } else {
-                method2ActualItems.push(value);
-                if (method2ActualItems.length >= method2ExpectedItems.length) {
-                    t.deepEqual(method2ExpectedItems, method2ActualItems);
-                }
-            }
-        },
-        () => {
-            // NOOP
-        },
-        () => {
-            t.pass("complete");
-            t.end();
-        },
-    );
+    ).toPromise();
+
+    t.true(clientEmitterSpy.calledWithExactly(
+        channel,
+        sinon.match((request: Model.RequestPayload<keyof Api>) => {
+            const uid = Boolean(request.uid.length);
+            const type = request.type === "request";
+            const name = request.name === "method1" || request.name === "method2";
+            const data = request.name === "method1" ? request.data === method1Input
+                : request.name === "method2" ? request.data === method2Input
+                    : false;
+
+            return uid && type && name && data;
+        }, "request"),
+    ));
+
+    t.true(providerEmitterSpy.calledWithExactly(
+        channel,
+        sinon.match((response: Model.ResponsePayload<keyof Api, Model.AnyType>) => {
+            const uid = Boolean(response.uid.length);
+            const type = response.type === "response";
+            const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems);
+
+            return uid && type && data;
+        }, "request"),
+    ));
 });
 
 test("unregister", (t) => {
     t.plan(8);
 
-    const channel = "channel-4546";
+    const channel = randomStr();
     const service = new Service<{
         numberToString: Model.Action<number, string>;
         stringToNumber: Model.Action<string, number>;
@@ -129,19 +142,14 @@ test("backend error", async (t) => {
 });
 
 test("timeout error", async (t) => {
-    const channel = "channel-4546";
+    const channel = randomStr();
     const service = new Service<{ numberToString: Model.Action<number, string> }>({channel});
     const emitter = new EventEmitter();
     const inputValue = 123;
     const method = "numberToString";
     const client = service.caller({emitter, listener: emitter}, {timeoutMs: 500});
 
-    service.register(
-        {
-            numberToString: (input) => of(String(input)).pipe(delay(1000)),
-        },
-        emitter,
-    );
+    service.register({numberToString: (input) => of(String(input)).pipe(delay(1000))}, emitter);
 
     await t.throws(
         client(method)(inputValue).toPromise(),
@@ -150,3 +158,26 @@ test("timeout error", async (t) => {
 
     t.is(String(inputValue), await client(method, {timeoutMs: 1500})(inputValue).toPromise());
 });
+
+test("calling method without input an argument", async (t) => {
+    interface Api {
+        ping: Model.ActionWithoutInput<never>;
+    }
+
+    const channel = randomStr();
+    const service = new Service<Api>({channel});
+    const em = new EventEmitter();
+    const emitSpy = sinon.spy(em, "emit");
+
+    service.register({ping: () => EMPTY}, em);
+    await service.call("ping", {}, {listener: em, emitter: em})().toPromise();
+
+    t.true(emitSpy.calledWithExactly(
+        channel,
+        sinon.match((request: Model.RequestPayload<keyof Api>) => !("data" in request), "dataLessRequest"),
+    ));
+});
+
+function randomStr(): string {
+    return uuid.v4();
+}

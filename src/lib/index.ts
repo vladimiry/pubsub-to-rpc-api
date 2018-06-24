@@ -1,38 +1,24 @@
-import * as deserializeError from "deserialize-error";
-import * as uuid from "uuid-browser";
+import deserializeError from "deserialize-error";
+import uuid from "uuid-browser";
 import {Observable, Subscriber, Subscription} from "rxjs";
 import {serializerr} from "serializerr";
 
 import * as Model from "./model";
-import {
-    Action,
-    ActionsRecord,
-    AnyType,
-    CallOptions,
-    Emitters,
-    EmittersResolver,
-    EventEmitter,
-    EventListener,
-    RequestPayload,
-    RequestResolver,
-    ResponsePayload,
-    UnpackedActionResult,
-} from "./model";
 
 export {
     Model,
     Service,
 };
 
-class Service<Actions extends ActionsRecord<Extract<keyof Actions, string>>> {
+class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
     public unregister?: () => void;
 
     constructor(private readonly options: { channel: string }) {}
 
     public register<ActionName extends keyof Actions>(
         actions: Actions,
-        em: EventEmitter & EventListener,
-        {requestResolver}: { requestResolver?: RequestResolver } = {},
+        em: Model.CombinedEventEmitter,
+        {requestResolver}: { requestResolver?: Model.RequestResolver } = {},
     ): void {
         if (this.unregister) {
             this.unregister();
@@ -40,9 +26,9 @@ class Service<Actions extends ActionsRecord<Extract<keyof Actions, string>>> {
 
         const {channel} = this.options;
         const subscriptions: Subscription[] = [];
-        const handler = (...args: AnyType[]) => {
+        const handler = (...args: Model.AnyType[]) => {
             const resolvedArgs = requestResolver ? requestResolver(...args) : false;
-            const payload: RequestPayload<ActionName> | ResponsePayload<ActionName, AnyType> = resolvedArgs
+            const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.AnyType> = resolvedArgs
                 ? resolvedArgs.payload
                 : args[0];
 
@@ -51,11 +37,11 @@ class Service<Actions extends ActionsRecord<Extract<keyof Actions, string>>> {
             }
 
             const {name, data, uid} = payload;
-            const action: Action = actions[name];
+            const action: Model.Action | Model.ActionWithoutInput = actions[name];
             const actionResult = action(data);
 
-            type Output = UnpackedActionResult<typeof actionResult>;
-            type ActualResponsePayload = ResponsePayload<typeof name, Output>;
+            type Output = Model.UnpackedActionResult<typeof actionResult>;
+            type ActualResponsePayload = Model.ResponsePayload<typeof name, Output>;
 
             const emitter = resolvedArgs
                 ? resolvedArgs.emitter
@@ -93,14 +79,16 @@ class Service<Actions extends ActionsRecord<Extract<keyof Actions, string>>> {
     // TODO track function parameter extracting issue https://github.com/Microsoft/TypeScript/issues/24068
     public call<ActionName extends keyof Actions>(
         name: ActionName,
-        {listenChannel, timeoutMs, unSubscribeOn, notificationWrapper}: CallOptions,
-        emitters: Emitters | EmittersResolver,
+        {listenChannel, timeoutMs, unSubscribeOn, notificationWrapper}: Model.CallOptions,
+        emitters: Model.Emitters | Model.EmittersResolver,
     ): Actions[ActionName] {
-        const runNotification = notificationWrapper || ((fn) => fn()) as (fn: (...args: AnyType[]) => void) => void;
+        const runNotification = notificationWrapper || ((fn) => fn()) as (fn: (...args: Model.AnyType[]) => void) => void;
+        const {channel} = this.options;
 
-        return (data) => {
-            const {channel} = this.options;
-            const request: RequestPayload<ActionName> = {uid: uuid.v4(), name, data, type: "request"};
+        // tslint:disable:only-arrow-functions
+        return function(data) {
+            const requestData = arguments.length ? {data} : {};
+            const request: Model.RequestPayload<ActionName> = {uid: uuid.v4(), type: "request", name, ...requestData};
             type Return = ReturnType<Actions[ActionName]>;
 
             return Observable.create((observer: Subscriber<Return>) => {
@@ -108,7 +96,7 @@ class Service<Actions extends ActionsRecord<Extract<keyof Actions, string>>> {
                 const {emitter, listener} = typeof emitters === "function"
                     ? emitters()
                     : emitters;
-                const handler = (payload: ResponsePayload<ActionName, Return> | RequestPayload<ActionName>) => {
+                const handler = (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
                     if (payload.type !== "response" || payload.uid !== request.uid) {
                         return;
                     }
@@ -158,8 +146,8 @@ class Service<Actions extends ActionsRecord<Extract<keyof Actions, string>>> {
         };
     }
 
-    public caller(emiters: Emitters | EmittersResolver, topOptions: CallOptions = {}) {
-        return <ActionName extends keyof Actions>(name: ActionName, options: CallOptions = {}) => this.call(
+    public caller(emiters: Model.Emitters | Model.EmittersResolver, topOptions: Model.CallOptions = {}) {
+        return <ActionName extends keyof Actions>(name: ActionName, options: Model.CallOptions = {}) => this.call(
             name,
             {...topOptions, ...options},
             emiters,
