@@ -107,6 +107,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         return;
                     }
                     if ("data" in payload) {
+                        clearTimeout(timeoutHandle);
                         runNotification(() => observer.next(payload.data));
                     }
                     if ("complete" in payload && payload.complete) {
