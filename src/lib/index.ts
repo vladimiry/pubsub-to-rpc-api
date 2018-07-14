@@ -106,11 +106,9 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         runNotification(() => observer.error(deserializeError(payload.error)));
                         return;
                     }
-
                     if ("data" in payload) {
                         runNotification(() => observer.next(payload.data));
                     }
-
                     if ("complete" in payload && payload.complete) {
                         clear();
                         runNotification(() => observer.complete());
@@ -134,7 +132,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         () => {
                             clear();
                             const error = new Error(`Invocation timeout of "${name}" method on "${channel}" channel`);
-                            observer.error(error);
+                            runNotification(() => observer.error(error));
                         },
                         timeoutMs,
                     );
