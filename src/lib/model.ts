@@ -58,7 +58,7 @@ export type RequestResolver = (...args: AnyType[]) => {
 
 export interface CallOptions {
     timeoutMs: number;
-    unSubscribeOn?: Promise<AnyType>;
+    finishPromise?: Promise<AnyType>;
     listenChannel?: string;
     notificationWrapper?: (fn: (...args: AnyType[]) => AnyType) => AnyType;
 }

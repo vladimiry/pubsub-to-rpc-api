@@ -86,7 +86,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
     // TODO track function parameter extracting issue https://github.com/Microsoft/TypeScript/issues/24068
     public call<ActionName extends keyof Actions>(
         name: ActionName,
-        {listenChannel, timeoutMs, unSubscribeOn, notificationWrapper}: Model.CallOptions,
+        {listenChannel, timeoutMs, finishPromise, notificationWrapper}: Model.CallOptions,
         emitters: Model.Emitters | Model.EmittersResolver,
     ): Actions[ActionName] {
         const runNotification = notificationWrapper || ((fn) => fn()) as (fn: (...args: Model.AnyType[]) => void) => void;
@@ -100,33 +100,8 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             type Return = ReturnType<Actions[ActionName]>;
 
             return Observable.create((observer: Subscriber<Return>) => {
+                const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
                 const subscribeChannel = listenChannel || channel;
-                const {emitter, listener} = typeof emitters === "function"
-                    ? emitters()
-                    : emitters;
-                const responseHandler = (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
-                    if (payload.type !== "response" || payload.uid !== request.uid) {
-                        return;
-                    }
-
-                    if ("error" in payload) {
-                        clear();
-                        runNotification(() => observer.error(deserializeError(payload.error)));
-                        return;
-                    }
-                    if ("data" in payload) {
-                        clearTimeout(timeoutHandle);
-                        runNotification(() => observer.next(payload.data));
-                    }
-                    if ("complete" in payload && payload.complete) {
-                        clear();
-                        runNotification(() => observer.complete());
-                    }
-                };
-                const clear = () => {
-                    clearTimeout(timeoutHandle);
-                    listener.off(subscribeChannel, responseHandler);
-                };
                 const timeoutHandle = setTimeout(
                     () => {
                         clear();
@@ -135,12 +110,40 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     },
                     timeoutMs,
                 );
+                const clear = () => {
+                    clearTimeout(timeoutHandle);
+                    listener.off(subscribeChannel, responseHandler);
+                };
+                const sendError = (error: Error) => {
+                    clear();
+                    runNotification(() => observer.error(deserializeError(error)));
+                };
+                const sendComplete = () => {
+                    clear();
+                    runNotification(() => observer.complete());
+                };
+                const responseHandler = (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
+                    if (payload.type !== "response" || payload.uid !== request.uid) {
+                        return;
+                    }
 
-                if (unSubscribeOn) {
-                    unSubscribeOn.then(() => {
-                        clear();
-                        observer.complete();
-                    });
+                    if ("error" in payload) {
+                        sendError(deserializeError(payload.error));
+                        return;
+                    }
+                    if ("data" in payload) {
+                        clearTimeout(timeoutHandle);
+                        runNotification(() => observer.next(payload.data));
+                    }
+                    if ("complete" in payload && payload.complete) {
+                        sendComplete();
+                    }
+                };
+
+                if (finishPromise) {
+                    finishPromise
+                        .then(sendComplete)
+                        .catch(sendError);
                 }
 
                 listener.on(subscribeChannel, responseHandler);
