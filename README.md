@@ -6,6 +6,8 @@ Is a Node.js / browser library that converts _publish-subscribe / IPC_ - like in
 
 ## Getting started
 
+Your project needs `rxjs` module to be installed, which is a peer dependency of this project.
+
 Related source code is located [here](src/example/readme), can be executed by running `yarn example` console command.
 
 Let's first describe API methods and create service instance (shared.ts):
