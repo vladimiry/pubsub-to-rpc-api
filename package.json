@@ -13,6 +13,7 @@
   ],
   "main": "./dist/index.js",
   "scripts": {
+    "example": "npm-run-all dist example:start",
     "example:test": "cross-env TS_NODE_PROJECT=./src/example/tsconfig.json ava --verbose \"./src/example/**/*.{spec,test}.ts\"",
     "example:start": "cross-env TS_NODE_PROJECT=./src/example/tsconfig.json ./node_modules/.bin/ts-node src/example/readme/index.ts",
     "example:compile": "tsc --listEmittedFiles -p ./src/example/tsconfig.json --outDir ./output",

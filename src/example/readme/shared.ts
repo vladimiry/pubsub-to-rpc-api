@@ -2,7 +2,7 @@
 // but only API structure definition and service instance creating
 // as this stuff is supposed to be shared between provider and client implementations
 
-import {Model, Service} from "pubsub-to-stream-api";
+import {Model, Service} from "../../../dist";
 
 // API structure
 export interface Api {
