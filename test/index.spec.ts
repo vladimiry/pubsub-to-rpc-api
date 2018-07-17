@@ -138,7 +138,11 @@ test("backend error", async (t) => {
         emitter,
     );
 
-    await t.throws(service.call("method", {}, {emitter, listener: emitter})("w-456").toPromise(), `"w-456" can't be parsed to number`);
+    await t.throws(service.call(
+        "method",
+        {timeoutMs: 500},
+        {emitter, listener: emitter},
+    )("w-456").toPromise(), `"w-456" can't be parsed to number`);
 });
 
 test("timeout error", async (t) => {
@@ -170,7 +174,7 @@ test("calling method without input an argument", async (t) => {
     const emitSpy = sinon.spy(em, "emit");
 
     service.register({ping: () => EMPTY}, em);
-    await service.call("ping", {}, {listener: em, emitter: em})().toPromise();
+    await service.call("ping", {timeoutMs: 500}, {listener: em, emitter: em})().toPromise();
 
     t.true(emitSpy.calledWithExactly(
         channel,

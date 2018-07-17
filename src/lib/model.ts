@@ -34,6 +34,7 @@ export type ResponsePayload<Name, O> =
 
 export interface EventListener {
     on(event: string, listener: (...args: AnyType[]) => void): this;
+
     off(event: string, listener: (...args: AnyType[]) => void): this;
 }
 
@@ -56,9 +57,9 @@ export type RequestResolver = (...args: AnyType[]) => {
 };
 
 export interface CallOptions {
-    listenChannel?: string;
-    timeoutMs?: number;
+    timeoutMs: number;
     unSubscribeOn?: Promise<AnyType>;
+    listenChannel?: string;
     notificationWrapper?: (fn: (...args: AnyType[]) => AnyType) => AnyType;
 }
 

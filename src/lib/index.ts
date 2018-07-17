@@ -13,7 +13,14 @@ export {
 class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
     public unregister?: () => void;
 
-    constructor(private readonly options: { channel: string }) {}
+    private options: { channel: string; callTimeoutMs: number };
+
+    constructor(opts: { channel: string; defaultCallTimeoutMs?: number }) {
+        this.options = {
+            channel: opts.channel,
+            callTimeoutMs: typeof opts.defaultCallTimeoutMs !== "undefined" ? opts.defaultCallTimeoutMs : 1000 * 3,
+        };
+    }
 
     public register<ActionName extends keyof Actions>(
         actions: Actions,
@@ -26,7 +33,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
 
         const {channel} = this.options;
         const subscriptions: Subscription[] = [];
-        const handler = (...args: Model.AnyType[]) => {
+        const requestHandler = (...args: Model.AnyType[]) => {
             const resolvedArgs = requestResolver ? requestResolver(...args) : false;
             const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.AnyType> = resolvedArgs
                 ? resolvedArgs.payload
@@ -67,11 +74,11 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             subscriptions.push(subscription);
         };
 
-        em.on(channel, handler);
+        em.on(channel, requestHandler);
 
         this.unregister = () => {
             delete this.unregister;
-            em.off(channel, handler);
+            em.off(channel, requestHandler);
             subscriptions.forEach((subscription) => subscription.unsubscribe());
         };
     }
@@ -89,6 +96,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         return function(data) {
             const requestData = arguments.length ? {data} : {};
             const request: Model.RequestPayload<ActionName> = {uid: uuid.v4(), type: "request", name, ...requestData};
+
             type Return = ReturnType<Actions[ActionName]>;
 
             return Observable.create((observer: Subscriber<Return>) => {
@@ -96,7 +104,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 const {emitter, listener} = typeof emitters === "function"
                     ? emitters()
                     : emitters;
-                const handler = (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
+                const responseHandler = (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
                     if (payload.type !== "response" || payload.uid !== request.uid) {
                         return;
                     }
@@ -117,9 +125,16 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 };
                 const clear = () => {
                     clearTimeout(timeoutHandle);
-                    listener.off(subscribeChannel, handler);
+                    listener.off(subscribeChannel, responseHandler);
                 };
-                let timeoutHandle: NodeJS.Timer;
+                const timeoutHandle = setTimeout(
+                    () => {
+                        clear();
+                        const error = new Error(`Invocation timeout of "${name}" method on "${channel}" channel`);
+                        runNotification(() => observer.error(error));
+                    },
+                    timeoutMs,
+                );
 
                 if (unSubscribeOn) {
                     unSubscribeOn.then(() => {
@@ -128,27 +143,19 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     });
                 }
 
-                if (timeoutMs) {
-                    timeoutHandle = setTimeout(
-                        () => {
-                            clear();
-                            const error = new Error(`Invocation timeout of "${name}" method on "${channel}" channel`);
-                            runNotification(() => observer.error(error));
-                        },
-                        timeoutMs,
-                    );
-                }
-
-                listener.on(subscribeChannel, handler);
+                listener.on(subscribeChannel, responseHandler);
                 emitter.emit(channel, request);
             });
         };
     }
 
-    public caller(emiters: Model.Emitters | Model.EmittersResolver, topOptions: Model.CallOptions = {}) {
-        return <ActionName extends keyof Actions>(name: ActionName, options: Model.CallOptions = {}) => this.call(
+    public caller(
+        emiters: Model.Emitters | Model.EmittersResolver,
+        defaultOptions: Model.CallOptions = {timeoutMs: this.options.callTimeoutMs},
+    ) {
+        return <ActionName extends keyof Actions>(name: ActionName, options: Model.CallOptions = defaultOptions) => this.call(
             name,
-            {...topOptions, ...options},
+            {...defaultOptions, ...options},
             emiters,
         );
     }
