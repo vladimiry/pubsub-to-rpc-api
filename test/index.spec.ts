@@ -8,6 +8,7 @@ import {test} from "ava";
 import {Model, Service} from "../dist/index";
 
 // TODO test a whole emitter|listener.on|off|emit cycle of provider and client
+// TODO test multiple registered api sets on the single service
 
 test("calling 2 methods", async (t) => {
     interface Api {
@@ -70,61 +71,6 @@ test("calling 2 methods", async (t) => {
             return uid && type && data;
         }, "request"),
     ));
-});
-
-test("unregister", (t) => {
-    t.plan(8);
-
-    const channel = randomStr();
-    const service = new Service<{
-        numberToString: Model.Action<number, string>;
-        stringToNumber: Model.Action<string, number>;
-    }>({channel});
-    const emitter = new EventEmitter();
-    const client = service.caller({emitter, listener: emitter});
-    const multipliers = [1, 2, 3];
-    let unregisterCalled = 0;
-
-    t.falsy(service.unregister);
-
-    multipliers.map((i) => {
-        if (service.unregister) {
-            service.unregister = ((unregister) => () => {
-                unregisterCalled++;
-                return unregister();
-            })(service.unregister);
-        }
-
-        return service.register(
-            {
-                numberToString: (input) => of(String(input * i)),
-                stringToNumber: (input) => of(Number(input) * i),
-            },
-            emitter,
-        );
-    });
-
-    t.is(2, unregisterCalled);
-    t.is(emitter.listenerCount(channel), 1);
-
-    const call = () => {
-        client("numberToString")(123).subscribe((result) => {
-            t.is(String(123 * multipliers[multipliers.length - 1]), result);
-        });
-        client("stringToNumber")("234").subscribe((result) => {
-            t.is(234 * multipliers[multipliers.length - 1], result);
-        });
-    };
-
-    call();
-    call();
-
-    if (service.unregister) {
-        service.unregister();
-        t.falsy(service.unregister);
-    }
-
-    call();
 });
 
 test("backend error", async (t) => {

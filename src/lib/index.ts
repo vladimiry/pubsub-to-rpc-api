@@ -5,20 +5,15 @@ import {serializerr} from "serializerr";
 
 import * as Model from "./model";
 
-export {
-    Model,
-    Service,
-};
+const ONE_SECOND_MS = 1000;
 
 class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
-    public unregister?: () => void;
-
-    private options: { channel: string; callTimeoutMs: number };
+    private readonly options: { channel: string; callTimeoutMs: number };
 
     constructor(opts: { channel: string; defaultCallTimeoutMs?: number }) {
         this.options = {
             channel: opts.channel,
-            callTimeoutMs: typeof opts.defaultCallTimeoutMs !== "undefined" ? opts.defaultCallTimeoutMs : 1000 * 3,
+            callTimeoutMs: typeof opts.defaultCallTimeoutMs !== "undefined" ? opts.defaultCallTimeoutMs : ONE_SECOND_MS * 3,
         };
     }
 
@@ -26,59 +21,57 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         actions: Actions,
         em: Model.CombinedEventEmitter,
         {requestResolver}: { requestResolver?: Model.RequestResolver } = {},
-    ): void {
-        if (this.unregister) {
-            this.unregister();
-        }
-
+    ): () => void {
         const {channel} = this.options;
         const subscriptions: Subscription[] = [];
-        const requestHandler = (...args: Model.AnyType[]) => {
-            const resolvedArgs = requestResolver ? requestResolver(...args) : false;
-            const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.AnyType> = resolvedArgs
-                ? resolvedArgs.payload
-                : args[0];
+        const arrayOfEvenNameAndHander = [
+            channel,
+            (...args: Model.AnyType[]) => {
+                const resolvedArgs = requestResolver ? requestResolver(...args) : false;
+                const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.AnyType> = resolvedArgs
+                    ? resolvedArgs.payload
+                    : args[0];
 
-            if (payload.type !== "request") {
-                return;
-            }
+                if (payload.type !== "request") {
+                    return;
+                }
 
-            const {name, data, uid} = payload;
-            const action: Model.Action | Model.ActionWithoutInput = actions[name];
-            const actionResult = action(data);
+                const {name, data, uid} = payload;
+                const action: Model.Action | Model.ActionWithoutInput = actions[name];
+                const actionResult = action(data);
 
-            type Output = Model.UnpackedActionResult<typeof actionResult>;
-            type ActualResponsePayload = Model.ResponsePayload<typeof name, Output>;
+                type Output = Model.UnpackedActionResult<typeof actionResult>;
+                type ActualResponsePayload = Model.ResponsePayload<typeof name, Output>;
 
-            const emitter = resolvedArgs
-                ? resolvedArgs.emitter
-                : em;
-            const response: ActualResponsePayload = {uid, name, type: "response"};
-            const subscription: Subscription = actionResult.subscribe(
-                (responseData) => {
-                    const output: ActualResponsePayload = {...response, data: responseData};
-                    emitter.emit(channel, output);
-                },
-                (error) => {
-                    setTimeout(() => subscription.unsubscribe(), 0);
-                    const output: ActualResponsePayload = {...response, error: serializerr(error)};
-                    emitter.emit(channel, output);
-                },
-                () => {
-                    setTimeout(() => subscription.unsubscribe(), 0);
-                    const output: ActualResponsePayload = {...response, complete: true};
-                    emitter.emit(channel, output);
-                }, // TODO emit "complete" event to close observable on client side
-            );
+                const emitter = resolvedArgs
+                    ? resolvedArgs.emitter
+                    : em;
+                const response: ActualResponsePayload = {uid, name, type: "response"};
+                const subscription: Subscription = actionResult.subscribe(
+                    (responseData) => {
+                        const output: ActualResponsePayload = {...response, data: responseData};
+                        emitter.emit(channel, output);
+                    },
+                    (error) => {
+                        setTimeout(() => subscription.unsubscribe(), 0);
+                        const output: ActualResponsePayload = {...response, error: serializerr(error)};
+                        emitter.emit(channel, output);
+                    },
+                    () => {
+                        setTimeout(() => subscription.unsubscribe(), 0);
+                        const output: ActualResponsePayload = {...response, complete: true};
+                        emitter.emit(channel, output);
+                    }, // TODO emit "complete" event to close observable on client side
+                );
 
-            subscriptions.push(subscription);
-        };
+                subscriptions.push(subscription);
+            },
+        ];
 
-        em.on(channel, requestHandler);
+        em.on.apply(em, arrayOfEvenNameAndHander);
 
-        this.unregister = () => {
-            delete this.unregister;
-            em.off(channel, requestHandler);
+        return () => {
+            em.off.apply(em, arrayOfEvenNameAndHander);
             subscriptions.forEach((subscription) => subscription.unsubscribe());
         };
     }
@@ -102,51 +95,53 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             return Observable.create((observer: Subscriber<Return>) => {
                 const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
                 const subscribeChannel = listenChannel || channel;
-                const timeoutHandle = setTimeout(
+                const timeoutId = setTimeout(
                     () => {
-                        clear();
+                        release();
                         const error = new Error(`Invocation timeout of "${name}" method on "${channel}" channel`);
                         runNotification(() => observer.error(error));
                     },
                     timeoutMs,
                 );
-                const clear = () => {
-                    clearTimeout(timeoutHandle);
-                    listener.off(subscribeChannel, responseHandler);
+                const release = () => {
+                    clearTimeout(timeoutId);
+                    listener.off.apply(listener, arrayOfEvenNameAndHander);
                 };
-                const sendError = (error: Error) => {
-                    clear();
+                const emitError = (error: Error) => {
+                    release();
                     runNotification(() => observer.error(deserializeError(error)));
                 };
-                const sendComplete = () => {
-                    clear();
+                const emitComplete = () => {
+                    release();
                     runNotification(() => observer.complete());
                 };
-                const responseHandler = (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
-                    if (payload.type !== "response" || payload.uid !== request.uid) {
-                        return;
-                    }
-
-                    if ("error" in payload) {
-                        sendError(deserializeError(payload.error));
-                        return;
-                    }
-                    if ("data" in payload) {
-                        clearTimeout(timeoutHandle);
-                        runNotification(() => observer.next(payload.data));
-                    }
-                    if ("complete" in payload && payload.complete) {
-                        sendComplete();
-                    }
-                };
+                const arrayOfEvenNameAndHander = [
+                    subscribeChannel,
+                    (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
+                        if (payload.type !== "response" || payload.uid !== request.uid) {
+                            return;
+                        }
+                        if ("error" in payload) {
+                            emitError(deserializeError(payload.error));
+                            return;
+                        }
+                        if ("data" in payload) {
+                            clearTimeout(timeoutId);
+                            runNotification(() => observer.next(payload.data));
+                        }
+                        if ("complete" in payload && payload.complete) {
+                            emitComplete();
+                        }
+                    },
+                ];
 
                 if (finishPromise) {
                     finishPromise
-                        .then(sendComplete)
-                        .catch(sendError);
+                        .then(emitComplete)
+                        .catch(emitError);
                 }
 
-                listener.on(subscribeChannel, responseHandler);
+                listener.on.apply(listener, arrayOfEvenNameAndHander);
                 emitter.emit(channel, request);
             });
         };
@@ -163,3 +158,8 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         );
     }
 }
+
+export {
+    Model,
+    Service,
+};
