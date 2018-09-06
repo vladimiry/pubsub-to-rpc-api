@@ -3,7 +3,7 @@ import uuid from "uuid-browser";
 import {delay, map, take} from "rxjs/operators";
 import {EMPTY, interval, merge, of, throwError} from "rxjs";
 import {EventEmitter} from "eventemitter3";
-import {test} from "ava";
+import test from "ava";
 
 import {Model, Service} from "../dist/index";
 
@@ -84,7 +84,7 @@ test("backend error", async (t) => {
         emitter,
     );
 
-    await t.throws(service.call(
+    await t.throwsAsync(service.call(
         "method",
         {timeoutMs: 500},
         {emitter, listener: emitter},
@@ -101,7 +101,7 @@ test("timeout error", async (t) => {
 
     service.register({numberToString: (input) => of(String(input)).pipe(delay(1000))}, emitter);
 
-    await t.throws(
+    await t.throwsAsync(
         client(method)(inputValue).toPromise(),
         `Invocation timeout of "${method}" method on "${channel}" channel`,
     );
