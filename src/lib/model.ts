@@ -1,11 +1,11 @@
 import {Observable} from "rxjs";
 
 // tslint:disable-next-line:no-any
-export type AnyType = any;
+export type TODO = any;
 
-export type Input = AnyType | never;
+export type Input = TODO | never;
 
-export type Output = AnyType | never;
+export type Output = TODO | never;
 
 type OutputWrapper<T extends Output> = Observable<T>;
 
@@ -17,29 +17,29 @@ export type ActionsRecord<K extends string> = Record<K, Action | ActionWithoutIn
 
 export type PayloadUid = string;
 
-export interface RequestPayload<Name> {
+export type RequestPayload<Name> = {
     uid: PayloadUid;
     type: "request";
     name: Name;
     data?: Input;
-}
+} & Pick<CallOptions, "serialization">;
 
 export type ResponsePayload<Name, O> =
     { uid: PayloadUid, type: "response", name: Name } & (
     | { data: O }
     | { data: O, complete?: boolean }
     | { complete?: boolean }
-    | { error: AnyType }
+    | { error: TODO }
     );
 
 export interface EventListener {
-    on(event: string, listener: (...args: AnyType[]) => void): this;
+    on(event: string, listener: (...args: TODO[]) => void): this;
 
-    off(event: string, listener: (...args: AnyType[]) => void): this;
+    off(event: string, listener: (...args: TODO[]) => void): this;
 }
 
 export interface EventEmitter {
-    emit(event: string, ...args: AnyType[]): boolean;
+    emit(event: string, ...args: TODO[]): boolean;
 }
 
 export type CombinedEventEmitter = EventListener & EventEmitter;
@@ -51,16 +51,17 @@ export interface Emitters {
 
 export type EmittersResolver = () => Emitters;
 
-export type RequestResolver = (...args: AnyType[]) => {
-    payload: AnyType;
+export type RequestResolver = (...args: TODO[]) => {
+    payload: TODO;
     emitter: EventEmitter;
 };
 
 export interface CallOptions {
     timeoutMs: number;
-    finishPromise?: Promise<AnyType>;
+    finishPromise?: Promise<TODO>;
     listenChannel?: string;
-    notificationWrapper?: (fn: (...args: AnyType[]) => AnyType) => AnyType;
+    notificationWrapper?: (fn: (...args: TODO[]) => TODO) => TODO;
+    serialization?: "jsan";
 }
 
 // tslint:disable:no-shadowed-variable

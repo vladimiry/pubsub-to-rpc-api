@@ -1,3 +1,4 @@
+import jsan from "jsan";
 import deserializeError from "deserialize-error";
 import uuid from "uuid-browser";
 import {Observable, Subscriber, Subscription} from "rxjs";
@@ -26,9 +27,9 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         const subscriptions: Subscription[] = [];
         const arrayOfEvenNameAndHander = [
             channel,
-            (...args: Model.AnyType[]) => {
+            (...args: Model.TODO[]) => {
                 const resolvedArgs = requestResolver ? requestResolver(...args) : false;
-                const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.AnyType> = resolvedArgs
+                const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.TODO> = resolvedArgs
                     ? resolvedArgs.payload
                     : args[0];
 
@@ -48,7 +49,8 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     : em;
                 const response: ActualResponsePayload = {uid, name, type: "response"};
                 const subscription: Subscription = actionResult.subscribe(
-                    (responseData) => {
+                    (value) => {
+                        const responseData = payload.serialization === "jsan" ? jsan.stringify(value) : value;
                         const output: ActualResponsePayload = {...response, data: responseData};
                         emitter.emit(channel, output);
                     },
@@ -79,16 +81,22 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
     // TODO track function parameter extracting issue https://github.com/Microsoft/TypeScript/issues/24068
     public call<ActionName extends keyof Actions>(
         name: ActionName,
-        {listenChannel, timeoutMs, finishPromise, notificationWrapper}: Model.CallOptions,
+        {listenChannel, timeoutMs, finishPromise, notificationWrapper, serialization}: Model.CallOptions,
         emitters: Model.Emitters | Model.EmittersResolver,
     ): Actions[ActionName] {
-        const runNotification = notificationWrapper || ((fn) => fn()) as (fn: (...args: Model.AnyType[]) => void) => void;
+        const runNotification = notificationWrapper || ((fn) => fn()) as (fn: (...args: Model.TODO[]) => void) => void;
         const {channel} = this.options;
 
         // tslint:disable:only-arrow-functions
         return function(data) {
             const requestData = arguments.length ? {data} : {};
-            const request: Model.RequestPayload<ActionName> = {uid: uuid.v4(), type: "request", name, ...requestData};
+            const request: Model.RequestPayload<ActionName> = {
+                uid: uuid.v4(),
+                type: "request",
+                serialization,
+                name,
+                ...requestData,
+            };
 
             type Return = ReturnType<Actions[ActionName]>;
 
@@ -127,7 +135,8 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         }
                         if ("data" in payload) {
                             clearTimeout(timeoutId);
-                            runNotification(() => observer.next(payload.data));
+                            const responseData = serialization === "jsan" ? jsan.parse(payload.data) : payload.data;
+                            runNotification(() => observer.next(responseData));
                         }
                         if ("complete" in payload && payload.complete) {
                             emitComplete();

@@ -1,9 +1,10 @@
+import rewiremock from "rewiremock";
 import sinon from "sinon";
+import test from "ava";
 import uuid from "uuid-browser";
 import {delay, map, take} from "rxjs/operators";
 import {EMPTY, interval, merge, of, throwError} from "rxjs";
 import {EventEmitter} from "eventemitter3";
-import test from "ava";
 
 import {Model, Service} from "../dist/index";
 
@@ -63,7 +64,7 @@ test("calling 2 methods", async (t) => {
 
     t.true(providerEmitterSpy.calledWithExactly(
         channel,
-        sinon.match((response: Model.ResponsePayload<keyof Api, Model.AnyType>) => {
+        sinon.match((response: Model.ResponsePayload<keyof Api, Model.TODO>) => {
             const uid = Boolean(response.uid.length);
             const type = response.type === "response";
             const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems);
@@ -126,6 +127,74 @@ test("calling method without input an argument", async (t) => {
         channel,
         sinon.match((request: Model.RequestPayload<keyof Api>) => !("data" in request), "dataLessRequest"),
     ));
+});
+
+test("preserve references", async (t) => {
+    const originalJsan = await import("jsan");
+    const mockedJsan = {
+        parse: sinon.spy(originalJsan, "parse"),
+        stringify: sinon.spy(originalJsan, "stringify"),
+    };
+    const {Service: MockedService} = await rewiremock.around(
+        () => import("../dist/index"),
+        (mock) => {
+            mock(() => import("jsan")).callThrough().with(mockedJsan);
+        },
+    );
+
+    interface O1 {
+        n: number;
+        o: { s: string };
+    }
+
+    interface Api {
+        o1: O1;
+        o1_list: O1[];
+    }
+
+    const service = new MockedService<{ method: Model.Action<boolean, Api> }>({channel: randomStr()});
+    const em = new EventEmitter();
+    const emOpts = {listener: em, emitter: em};
+    const jsanCaller = service.caller(emOpts, {timeoutMs: 500, serialization: "jsan"});
+    const expectedDataO1 = {n: 123, o: {s: "345"}};
+    const expectedData = {o1: expectedDataO1, o1_list: [expectedDataO1, expectedDataO1, expectedDataO1]};
+    // tslint:disable-next-line:max-line-length
+    const expectedJsanStr = `{"o1":{"n":${expectedDataO1.n},"o":{"s":"${expectedDataO1.o.s}"}},"o1_list":[{"$jsan":"$.o1"},{"$jsan":"$.o1"},{"$jsan":"$.o1"}]}`;
+
+    service.register({
+        method: (clone) => {
+            return of(clone ? JSON.parse(JSON.stringify(expectedData)) : expectedData);
+        },
+    }, em);
+
+    t.is(0, mockedJsan.parse.callCount);
+    t.is(0, mockedJsan.stringify.callCount);
+    const noJsanCalledData = await service.call("method", {timeoutMs: 100}, emOpts)(true).toPromise();
+    t.is(0, mockedJsan.parse.callCount);
+    t.is(0, mockedJsan.stringify.callCount);
+    t.deepEqual(expectedData, noJsanCalledData);
+    for (const o1 of noJsanCalledData.o1_list) {
+        t.false(noJsanCalledData.o1 === o1);
+    }
+
+    const calledWithCallerData = await jsanCaller("method")(false).toPromise();
+    t.is(1, mockedJsan.parse.callCount);
+    t.is(1, mockedJsan.stringify.callCount);
+    t.deepEqual(expectedData, calledWithCallerData);
+    for (const o1 of calledWithCallerData.o1_list) {
+        t.true(calledWithCallerData.o1 === o1);
+    }
+
+    const directMethodCalledData = await service.call("method", {timeoutMs: 100, serialization: "jsan"}, emOpts)(false).toPromise();
+    t.is(2, mockedJsan.parse.callCount);
+    t.is(2, mockedJsan.stringify.callCount);
+    t.deepEqual(expectedData, directMethodCalledData);
+    for (const o1 of directMethodCalledData.o1_list) {
+        t.true(directMethodCalledData.o1 === o1);
+    }
+
+    t.true(mockedJsan.stringify.alwaysCalledWithExactly(expectedData));
+    t.true(mockedJsan.parse.alwaysCalledWithExactly(expectedJsanStr));
 });
 
 function randomStr(): string {
