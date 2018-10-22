@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-stream-api",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -42,7 +42,7 @@
     ]
   },
   "peerDependencies": {
-    "rxjs": "^6.3.1"
+    "rxjs": "^6.3.3"
   },
   "dependencies": {
     "deserialize-error": "^0.0.3",

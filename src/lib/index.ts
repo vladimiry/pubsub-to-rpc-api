@@ -16,12 +16,13 @@ const stubLogger = {
 
 class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
     private static readonly registerStat: Record<string, { channel: string; index: number; listenersCount: number }> = {};
-    private readonly options: { channel: string; callTimeoutMs: number };
+    private readonly options: { channel: string; callTimeoutMs: number; logger: Model.Logger };
 
-    constructor(opts: { channel: string; defaultCallTimeoutMs?: number }) {
+    constructor(opts: { channel: string; defaultCallTimeoutMs?: number; logger?: Model.Logger }) {
         this.options = {
             channel: opts.channel,
             callTimeoutMs: typeof opts.defaultCallTimeoutMs !== "undefined" ? opts.defaultCallTimeoutMs : ONE_SECOND_MS * 3,
+            logger: opts.logger ? opts.logger : stubLogger,
         };
     }
 
@@ -30,15 +31,10 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         em: Model.CombinedEventEmitter,
         config: {
             requestResolver?: Model.RequestResolver;
-            logger?: {
-                debug: Model.LoggerFn;
-                verbose: Model.LoggerFn;
-                info: Model.LoggerFn;
-                error: Model.LoggerFn;
-            };
+            logger?: Model.Logger;
         } = {},
     ): () => void {
-        const logger = config.logger || stubLogger;
+        const logger = config.logger || this.options.logger;
         const {channel} = this.options;
         const stat: typeof Service.registerStat[typeof channel] = Service.registerStat[channel]
             = (Service.registerStat[channel] || {channel, index: 0, listenersCount: 0});
