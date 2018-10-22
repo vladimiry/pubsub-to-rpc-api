@@ -7,8 +7,15 @@ import {serializerr} from "serializerr";
 import * as Model from "./model";
 
 const ONE_SECOND_MS = 1000;
+// tslint:disable-next-line:no-empty
+const emptyFunction: Model.LoggerFn = () => {};
+const stubLogger = {
+    info: emptyFunction,
+    error: emptyFunction,
+};
 
 class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
+    private static readonly registerStat: Record<string, { channel: string; index: number; listenersCount: number }> = {};
     private readonly options: { channel: string; callTimeoutMs: number };
 
     constructor(opts: { channel: string; defaultCallTimeoutMs?: number }) {
@@ -21,14 +28,26 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
     public register<ActionName extends keyof Actions>(
         actions: Actions,
         em: Model.CombinedEventEmitter,
-        {requestResolver}: { requestResolver?: Model.RequestResolver } = {},
+        config: {
+            requestResolver?: Model.RequestResolver;
+            logger?: {
+                debug: Model.LoggerFn;
+                verbose: Model.LoggerFn;
+                info: Model.LoggerFn;
+                error: Model.LoggerFn;
+            };
+        } = {},
     ): () => void {
+        const logger = config.logger || stubLogger;
         const {channel} = this.options;
+        const stat: typeof Service.registerStat[typeof channel] = Service.registerStat[channel]
+            = (Service.registerStat[channel] || {channel, index: 0, listenersCount: 0});
+        const index = stat.index++;
         const subscriptions: Subscription[] = [];
-        const arrayOfEvenNameAndHander = [
+        const arrayOfEvenNameAndHandler = [
             channel,
             (...args: Model.TODO[]) => {
-                const resolvedArgs = requestResolver ? requestResolver(...args) : false;
+                const resolvedArgs = config.requestResolver ? config.requestResolver(...args) : false;
                 const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.TODO> = resolvedArgs
                     ? resolvedArgs.payload
                     : args[0];
@@ -53,28 +72,41 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         const responseData = payload.serialization === "jsan" ? jsan.stringify(value) : value;
                         const output: ActualResponsePayload = {...response, data: responseData};
                         emitter.emit(channel, output);
+                        logger.info(`emitted.data: ${JSON.stringify({index})}`);
                     },
                     (error) => {
-                        setTimeout(() => subscription.unsubscribe(), 0);
                         const output: ActualResponsePayload = {...response, error: serializerr(error)};
                         emitter.emit(channel, output);
+                        logger.error(`emitted.error: ${JSON.stringify({index})}`, error);
+                        setTimeout(() => unsubscribe, 0);
                     },
                     () => {
-                        setTimeout(() => subscription.unsubscribe(), 0);
                         const output: ActualResponsePayload = {...response, complete: true};
                         emitter.emit(channel, output);
+                        logger.info(`emitted.complete: ${JSON.stringify({index})}`);
+                        setTimeout(() => unsubscribe, 0);
                     }, // TODO emit "complete" event to close observable on client side
                 );
+                const unsubscribe = () => {
+                    subscription.unsubscribe();
+                    subscriptions.splice(subscriptions.indexOf(subscription), 1);
+                    logger.info(`subscription removed: ${JSON.stringify({subscriptionsCount: subscriptions.length, index})}`);
+                };
 
                 subscriptions.push(subscription);
+                logger.info(`subscription added: ${JSON.stringify({subscriptionsCount: subscriptions.length, index})}`);
             },
         ];
 
-        em.on.apply(em, arrayOfEvenNameAndHander);
+        em.on.apply(em, arrayOfEvenNameAndHandler);
+        stat.listenersCount++;
+
+        logger.info(`registered: ${JSON.stringify({actionsKeys: Object.keys(actions), index, stat})}`);
 
         return () => {
-            em.off.apply(em, arrayOfEvenNameAndHander);
+            em.off.apply(em, arrayOfEvenNameAndHandler);
             subscriptions.forEach((subscription) => subscription.unsubscribe());
+            logger.info(`unregistered: ${JSON.stringify({index, stat})}`);
         };
     }
 

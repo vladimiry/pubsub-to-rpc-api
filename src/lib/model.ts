@@ -69,3 +69,5 @@ export type UnpackedActionResult<T extends ReturnType<Action>> =
     T extends OutputWrapper<infer U> ? U :
         never;
 // tslint:enable:no-shadowed-variable
+
+export type LoggerFn = (...args: TODO[]) => void;
