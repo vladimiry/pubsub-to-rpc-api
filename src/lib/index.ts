@@ -52,9 +52,12 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     return;
                 }
 
-                const {name, data, uid} = payload;
-                const action: Model.Action | Model.ActionWithoutInput = actions[name];
-                const actionResult = action(data);
+                const {name, uid} = payload;
+                const ctx: Model.ActionContext<typeof args> = {[Model.ACTION_CONTEXT_SYMBOL]: {args}};
+                const action = actions[name];
+                const actionResult: ReturnType<typeof action> = "data" in payload
+                    ? (action as Model.Action).call(ctx, payload.data)
+                    : (action as Model.ActionWithoutInput).call(ctx);
 
                 type Output = Model.UnpackedActionResult<typeof actionResult>;
                 type ActualResponsePayload = Model.ResponsePayload<typeof name, Output>;

@@ -76,3 +76,9 @@ export interface Logger {
     info: LoggerFn;
     error: LoggerFn;
 }
+
+export const ACTION_CONTEXT_SYMBOL = Symbol(`pubsub-to-stream-api:ACTION_CONTEXT_SYMBOL`);
+
+export interface ActionContext<Args extends TODO[] = TODO[]> {
+    [ACTION_CONTEXT_SYMBOL]: { args: Args };
+}

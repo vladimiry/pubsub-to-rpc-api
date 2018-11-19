@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-stream-api",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -46,28 +46,28 @@
   },
   "dependencies": {
     "deserialize-error": "^0.0.3",
-    "jsan": "^3.1.10",
+    "jsan": "^3.1.11",
     "serializerr": "^1.0.3",
     "tslib": "^1.9.2",
     "uuid-browser": "^3.1.0"
   },
   "devDependencies": {
     "@types/bluebird": "^3.5.24",
-    "@types/node": "^10.12.0",
-    "@types/sinon": "^5.0.5",
-    "ava": "^1.0.0-rc.1",
+    "@types/node": "^10.12.9",
+    "@types/sinon": "^5.0.6",
+    "ava": "^1.0.0-rc.2",
     "cross-env": "^5.2.0",
     "eventemitter3": "^3.1.0",
-    "install-peers": "^1.0.2",
+    "install-peers": "^1.0.3",
     "maths.ts": "^0.0.8",
     "node-http-ping": "^0.3.1",
     "npm-run-all": "^4.1.3",
-    "rewiremock": "^3.10.0",
+    "rewiremock": "^3.12.3",
     "rimraf": "^2.6.2",
-    "sinon": "^7.0.0",
+    "sinon": "^7.1.1",
     "ts-node": "^7.0.1",
     "tslint": "^5.10.0",
     "tslint-rules-bunch": "^0.0.5",
-    "typescript": "^3.1.3"
+    "typescript": "^3.1.6"
   }
 }
