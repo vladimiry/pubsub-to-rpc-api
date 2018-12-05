@@ -3,6 +3,9 @@ import {Observable} from "rxjs";
 // tslint:disable-next-line:no-any
 export type TODO = any;
 
+export type Arguments<F extends (...x: TODO[]) => TODO> =
+    F extends (...x: infer A) => TODO ? A : never;
+
 export type Input = TODO | never;
 
 export type Output = TODO | never;

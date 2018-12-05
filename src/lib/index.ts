@@ -40,7 +40,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             = (Service.registerStat[channel] || {channel, index: 0, listenersCount: 0});
         const index = stat.index++;
         const subscriptions: Subscription[] = [];
-        const arrayOfEvenNameAndHandler = [
+        const arrayOfEvenNameAndHandler: Model.Arguments<typeof em.on> = [
             channel,
             (...args: Model.TODO[]) => {
                 const resolvedArgs = config.requestResolver ? config.requestResolver(...args) : false;
@@ -54,7 +54,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
 
                 const {name, uid} = payload;
                 const ctx: Model.ActionContext<typeof args> = {[Model.ACTION_CONTEXT_SYMBOL]: {args}};
-                const action = actions[name];
+                const action: Model.Action | Model.ActionWithoutInput = actions[name];
                 const actionResult: ReturnType<typeof action> = "data" in payload
                     ? (action as Model.Action).call(ctx, payload.data)
                     : (action as Model.ActionWithoutInput).call(ctx);
@@ -68,7 +68,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 const response: ActualResponsePayload = {uid, name, type: "response"};
                 const subscription: Subscription = actionResult.subscribe(
                     (value) => {
-                        const responseData = payload.serialization === "jsan" ? jsan.stringify(value) : value;
+                        const responseData = payload.serialization === "jsan" ? jsan.stringify(value, null, null, {refs: true}) : value;
                         const output: ActualResponsePayload = {...response, data: responseData};
                         emitter.emit(channel, output);
                         logger.info(`emitted.data: ${JSON.stringify({index})}`);
@@ -97,13 +97,13 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             },
         ];
 
-        em.on.apply(em, arrayOfEvenNameAndHandler);
+        em.on(...arrayOfEvenNameAndHandler);
         stat.listenersCount++;
 
         logger.info(`registered: ${JSON.stringify({actionsKeys: Object.keys(actions), index, stat})}`);
 
         return () => {
-            em.off.apply(em, arrayOfEvenNameAndHandler);
+            em.off(...arrayOfEvenNameAndHandler);
             subscriptions.forEach((subscription) => subscription.unsubscribe());
             logger.info(`unregistered: ${JSON.stringify({index, stat})}`);
         };
@@ -137,14 +137,16 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 const timeoutId = setTimeout(
                     () => {
                         release();
-                        const error = new Error(`Invocation timeout of "${name}" method on "${channel}" channel`);
+                        const error = new Error(
+                            `Invocation timeout of "${name}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
+                        );
                         runNotification(() => observer.error(error));
                     },
                     timeoutMs,
                 );
                 const release = () => {
                     clearTimeout(timeoutId);
-                    listener.off.apply(listener, arrayOfEvenNameAndHander);
+                    listener.off(...arrayOfEvenNameAndHander);
                 };
                 const emitError = (error: Error) => {
                     release();
@@ -154,7 +156,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     release();
                     runNotification(() => observer.complete());
                 };
-                const arrayOfEvenNameAndHander = [
+                const arrayOfEvenNameAndHander: Model.Arguments<typeof listener.on> = [
                     subscribeChannel,
                     (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
                         if (payload.type !== "response" || payload.uid !== request.uid) {
@@ -181,7 +183,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         .catch(emitError);
                 }
 
-                listener.on.apply(listener, arrayOfEvenNameAndHander);
+                listener.on(...arrayOfEvenNameAndHander);
                 emitter.emit(channel, request);
             });
         };

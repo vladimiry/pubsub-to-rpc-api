@@ -98,13 +98,14 @@ test("timeout error", async (t) => {
     const emitter = new EventEmitter();
     const inputValue = 123;
     const method = "numberToString";
-    const client = service.caller({emitter, listener: emitter}, {timeoutMs: 500});
+    const timeoutMs = 500;
+    const client = service.caller({emitter, listener: emitter}, {timeoutMs});
 
     service.register({numberToString: (input) => of(String(input)).pipe(delay(1000))}, emitter);
 
     await t.throwsAsync(
         client(method)(inputValue).toPromise(),
-        `Invocation timeout of "${method}" method on "${channel}" channel`,
+        `Invocation timeout of "${method}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
     );
 
     t.is(String(inputValue), await client(method, {timeoutMs: 1500})(inputValue).toPromise());
@@ -193,7 +194,7 @@ test("preserve references", async (t) => {
         t.true(directMethodCalledData.o1 === o1);
     }
 
-    t.true(mockedJsan.stringify.alwaysCalledWithExactly(expectedData));
+    t.true(mockedJsan.stringify.alwaysCalledWithExactly(expectedData, null, null, {refs: true}));
     t.true(mockedJsan.parse.alwaysCalledWithExactly(expectedJsanStr));
 });
 
