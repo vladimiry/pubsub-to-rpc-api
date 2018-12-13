@@ -16,6 +16,13 @@ const stubLogger = {
 
 class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
     private static readonly registerStat: Record<string, { channel: string; index: number; listenersCount: number }> = {};
+
+    private static readonly defaultNotificationWrapper: Required<Model.CallOptions>["notificationWrapper"]
+        = ((fn) => fn()) as (fn: (...args: Model.TODO[]) => void) => void;
+
+    private readonly callsListenersMap
+        = new WeakMap<Model.Emitters["listener"], Map<string, ReturnType<typeof Service.prototype.buildChannelCallsMap>>>();
+
     private readonly options: { channel: string; callTimeoutMs: number; logger: Model.Logger };
 
     constructor(opts: { channel: string; defaultCallTimeoutMs?: number; logger?: Model.Logger }) {
@@ -66,14 +73,14 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     ? resolvedArgs.emitter
                     : em;
                 const response: ActualResponsePayload = {uid, name, type: "response"};
-                const subscription: Subscription = actionResult.subscribe(
-                    (value) => {
+                const subscription = actionResult.subscribe(
+                    (value: Model.TODO) => {
                         const responseData = payload.serialization === "jsan" ? jsan.stringify(value, null, null, {refs: true}) : value;
                         const output: ActualResponsePayload = {...response, data: responseData};
                         emitter.emit(channel, output);
                         logger.info(`emitted.data: ${JSON.stringify({index})}`);
                     },
-                    (error) => {
+                    (error: Error) => {
                         const output: ActualResponsePayload = {...response, error: serializerr(error)};
                         emitter.emit(channel, output);
                         logger.error(`emitted.error: ${JSON.stringify({index})}`, error);
@@ -112,79 +119,83 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
     // TODO track function parameter extracting issue https://github.com/Microsoft/TypeScript/issues/24068
     public call<ActionName extends keyof Actions>(
         name: ActionName,
-        {listenChannel, timeoutMs, finishPromise, notificationWrapper, serialization}: Model.CallOptions,
+        options: Model.CallOptions,
         emitters: Model.Emitters | Model.EmittersResolver,
     ): Actions[ActionName] {
-        const runNotification = notificationWrapper || ((fn) => fn()) as (fn: (...args: Model.TODO[]) => void) => void;
-        const {channel} = this.options;
+        type Return = ReturnType<Actions[ActionName]>;
+
+        const self = this;
+        const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
+        const {channel: emitChannel} = this.options;
+        const subscribeChannel = options.listenChannel || this.options.channel;
+        const runNotification = options.notificationWrapper || Service.defaultNotificationWrapper;
+
+        this.ensureListeningSetup(subscribeChannel, listener);
 
         // tslint:disable:only-arrow-functions
-        return function(data) {
-            const requestData = arguments.length ? {data} : {};
+        return function() {
             const request: Model.RequestPayload<ActionName> = {
                 uid: uuid.v4(),
                 type: "request",
-                serialization,
+                serialization: options.serialization,
                 name,
-                ...requestData,
+                ...(arguments.length && {data: arguments[0]}),
             };
 
-            type Return = ReturnType<Actions[ActionName]>;
+            return new Observable<Return>((observer: Subscriber<Return>) => {
+                const callsByChannelMap = self.callsListenersMap.get(listener);
+                const callsMap = callsByChannelMap && callsByChannelMap.get(subscribeChannel);
 
-            return Observable.create((observer: Subscriber<Return>) => {
-                const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
-                const subscribeChannel = listenChannel || channel;
-                const timeoutId = setTimeout(
-                    () => {
-                        release();
-                        const error = new Error(
-                            `Invocation timeout of "${name}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
-                        );
-                        runNotification(() => observer.error(error));
-                    },
-                    timeoutMs,
-                );
-                const release = () => {
-                    clearTimeout(timeoutId);
-                    listener.off(...arrayOfEvenNameAndHander);
-                };
-                const emitError = (error: Error) => {
-                    release();
-                    runNotification(() => observer.error(deserializeError(error)));
-                };
-                const emitComplete = () => {
-                    release();
-                    runNotification(() => observer.complete());
-                };
-                const arrayOfEvenNameAndHander: Model.Arguments<typeof listener.on> = [
-                    subscribeChannel,
-                    (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
-                        if (payload.type !== "response" || payload.uid !== request.uid) {
-                            return;
-                        }
-                        if ("error" in payload) {
-                            emitError(deserializeError(payload.error));
-                            return;
-                        }
-                        if ("data" in payload) {
-                            clearTimeout(timeoutId);
-                            const responseData = serialization === "jsan" ? jsan.parse(payload.data) : payload.data;
-                            runNotification(() => observer.next(responseData));
-                        }
-                        if ("complete" in payload && payload.complete) {
-                            emitComplete();
-                        }
-                    },
-                ];
-
-                if (finishPromise) {
-                    finishPromise
-                        .then(emitComplete)
-                        .catch(emitError);
+                if (!callsMap) { // not supposed to be undefined at this state
+                    runNotification(() => observer.error(new Error(`Failed to resolve "${emitChannel}" channel's calls map`)));
+                    return;
                 }
 
-                listener.on(...arrayOfEvenNameAndHander);
-                emitter.emit(channel, request);
+                const timeoutId = setTimeout(
+                    () => {
+                        releaseTimeout();
+                        runNotification(() => observer.error(new Error(
+                            `Invocation timeout of "${name}" method on "${emitChannel}" channel with ${options.timeoutMs}ms timeout`,
+                        )));
+                    },
+                    options.timeoutMs,
+                );
+                const releaseTimeout = () => {
+                    clearTimeout(timeoutId);
+                };
+                const error = (e: Error) => {
+                    releaseTimeout();
+                    runNotification(() => observer.error(deserializeError(e)));
+                };
+                const complete = () => {
+                    releaseTimeout();
+                    runNotification(() => observer.complete());
+                };
+
+                if (options.finishPromise) {
+                    options.finishPromise
+                        .then(complete)
+                        .catch(error);
+                }
+
+                // register call handler
+                callsMap.set(
+                    request.uid,
+                    {
+                        error,
+                        complete,
+                        next(data: Return) {
+                            releaseTimeout();
+                            observer.next(options.serialization === "jsan"
+                                ? jsan.parse(data)
+                                : data,
+                            );
+                        },
+                    },
+                );
+
+                // execute the call
+                emitter.emit(emitChannel, request);
             });
         };
     }
@@ -198,6 +209,57 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             {...defaultOptions, ...options},
             emiters,
         );
+    }
+
+    private ensureListeningSetup<ActionName extends keyof Actions>(channel: string, listener: Model.Emitters["listener"]) {
+        type Return = ReturnType<Actions[keyof Actions]>;
+
+        let callsByChannelMap = this.callsListenersMap.get(listener);
+
+        if (callsByChannelMap && callsByChannelMap.has(channel)) {
+            return;
+        }
+
+        const callsMap = this.buildChannelCallsMap();
+
+        // register single handler per call channel
+        listener.on( // TODO implement unsubscribing
+            channel,
+            (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
+                const handler = callsMap.get(payload.uid);
+
+                if (!handler || payload.type !== "response") {
+                    return;
+                }
+
+                if ("error" in payload) {
+                    handler.error(deserializeError(payload.error));
+                    callsMap.delete(payload.uid);
+                    return;
+                }
+
+                if ("data" in payload) {
+                    handler.next(payload.data);
+                }
+
+                if ("complete" in payload && payload.complete) {
+                    handler.complete();
+                    callsMap.delete(payload.uid);
+                }
+            },
+        );
+
+        if (!callsByChannelMap) {
+            callsByChannelMap = new Map();
+            this.callsListenersMap.set(listener, callsByChannelMap);
+        }
+
+        // keep individual calls handlers
+        callsByChannelMap.set(channel, callsMap);
+    }
+
+    private buildChannelCallsMap() {
+        return new Map<string, Pick<Subscriber<ReturnType<Actions[keyof Actions]>>, "next" | "complete" | "error">>();
     }
 }
 
