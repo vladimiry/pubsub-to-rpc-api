@@ -186,10 +186,12 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         complete,
                         next(data: Return) {
                             releaseTimeout();
-                            observer.next(options.serialization === "jsan"
-                                ? jsan.parse(data)
-                                : data,
-                            );
+                            runNotification(() => {
+                                observer.next(options.serialization === "jsan"
+                                    ? jsan.parse(data)
+                                    : data,
+                                );
+                            });
                         },
                     },
                 );
