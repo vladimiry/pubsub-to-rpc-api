@@ -5,6 +5,7 @@ import {Observable, Subscriber, Subscription} from "rxjs";
 import {serializerr} from "serializerr";
 
 import * as Model from "./model";
+import {PayloadUid} from "./model";
 
 const ONE_SECOND_MS = 1000;
 // tslint:disable-next-line:no-empty
@@ -46,7 +47,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         const stat: typeof Service.registerStat[typeof channel] = Service.registerStat[channel]
             = (Service.registerStat[channel] || {channel, index: 0, listenersCount: 0});
         const index = stat.index++;
-        const subscriptions: Subscription[] = [];
+        const subscriptions = new Map<PayloadUid, Subscription>();
         const arrayOfEvenNameAndHandler: Model.Arguments<typeof em.on> = [
             channel,
             (...args: Model.TODO[]) => {
@@ -54,12 +55,22 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.TODO> = resolvedArgs
                     ? resolvedArgs.payload
                     : args[0];
+                const {name, uid} = payload;
+
+                // unsubscribe forced on the client side, normally on "finishPromise" resolving
+                if (payload.type === "unsubscribe") {
+                    const toUnsubscribe = subscriptions.get(uid);
+                    if (toUnsubscribe) {
+                        toUnsubscribe.unsubscribe();
+                        subscriptions.delete(uid);
+                    }
+                    return;
+                }
 
                 if (payload.type !== "request") {
                     return;
                 }
 
-                const {name, uid} = payload;
                 const ctx: Model.ActionContext<typeof args> = {[Model.ACTION_CONTEXT_SYMBOL]: {args}};
                 const action: Model.Action | Model.ActionWithoutInput = actions[name];
                 const actionResult: ReturnType<typeof action> = "data" in payload
@@ -95,12 +106,12 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 );
                 const unsubscribe = () => {
                     subscription.unsubscribe();
-                    subscriptions.splice(subscriptions.indexOf(subscription), 1);
-                    logger.info(`subscription removed: ${JSON.stringify({subscriptionsCount: subscriptions.length, index})}`);
+                    subscriptions.delete(uid);
+                    logger.info(`subscription removed: ${JSON.stringify({subscriptionsCount: subscriptions.size, index})}`);
                 };
 
-                subscriptions.push(subscription);
-                logger.info(`subscription added: ${JSON.stringify({subscriptionsCount: subscriptions.length, index})}`);
+                subscriptions.set(uid, subscription);
+                logger.info(`subscription added: ${JSON.stringify({subscriptionsCount: subscriptions.size, index})}`);
             },
         ];
 
@@ -112,6 +123,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         return () => {
             em.off(...arrayOfEvenNameAndHandler);
             subscriptions.forEach((subscription) => subscription.unsubscribe());
+            subscriptions.clear();
             logger.info(`unregistered: ${JSON.stringify({index, stat})}`);
         };
     }
@@ -174,7 +186,11 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
 
                 if (options.finishPromise) {
                     options.finishPromise
-                        .then(complete)
+                        .then(() => {
+                            complete();
+                            // sending forced unsubscribe signal to api provider
+                            emitter.emit(emitChannel, {uid: request.uid, type: "unsubscribe"});
+                        })
                         .catch(error);
                 }
 
@@ -225,7 +241,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         const callsMap = this.buildChannelCallsMap();
 
         // register single handler per call channel
-        listener.on( // TODO implement unsubscribing
+        listener.on( // TODO implement unsubscribe
             channel,
             (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
                 const handler = callsMap.get(payload.uid);

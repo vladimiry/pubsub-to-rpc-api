@@ -54,8 +54,10 @@ test("calling 2 methods", async (t) => {
             const uid = Boolean(request.uid.length);
             const type = request.type === "request";
             const name = request.name === "method1" || request.name === "method2";
-            const data = request.name === "method1" ? request.data === method1Input
-                : request.name === "method2" ? request.data === method2Input
+            const data = request.name === "method1"
+                ? "data" in request && request.data === method1Input
+                : request.name === "method2"
+                    ? "data" in request && request.data === method2Input
                     : false;
 
             return uid && type && name && data;

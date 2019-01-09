@@ -20,12 +20,20 @@ export type ActionsRecord<K extends string> = Record<K, Action | ActionWithoutIn
 
 export type PayloadUid = string;
 
-export type RequestPayload<Name> = {
-    uid: PayloadUid;
-    type: "request";
-    name: Name;
-    data?: Input;
-} & Pick<CallOptions, "serialization">;
+export type RequestPayload<Name> =
+    |
+    (Pick<CallOptions, "serialization"> & {
+        uid: PayloadUid;
+        name: Name;
+        type: "request";
+        data?: Input;
+    })
+    |
+    {
+        uid: PayloadUid;
+        name: Name;
+        type: "unsubscribe";
+    };
 
 export type ResponsePayload<Name, O> =
     { uid: PayloadUid, type: "response", name: Name } & (
