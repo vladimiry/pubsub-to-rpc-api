@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-stream-api",
-  "version": "4.0.0-beta.3",
+  "version": "4.0.0-beta.4",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -55,7 +55,7 @@
     "@types/bluebird": "^3.5.25",
     "@types/node": "^10.12.18",
     "@types/sinon": "^7.0.3",
-    "ava": "^1.0.1",
+    "ava": "^1.1.0",
     "cross-env": "^5.2.0",
     "eventemitter3": "^3.1.0",
     "install-peers": "^1.0.3",
@@ -66,7 +66,7 @@
     "rimraf": "^2.6.3",
     "sinon": "^7.2.2",
     "ts-node": "^7.0.1",
-    "tslint": "^5.12.0",
+    "tslint": "^5.12.1",
     "tslint-rules-bunch": "^0.0.7",
     "typescript": "^3.2.2"
   }

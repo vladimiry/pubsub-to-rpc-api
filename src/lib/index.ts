@@ -5,19 +5,18 @@ import {Observable, Subscriber, Subscription} from "rxjs";
 import {serializerr} from "serializerr";
 
 import * as Model from "./model";
-import {PayloadUid} from "./model";
 
 const ONE_SECOND_MS = 1000;
+
 // tslint:disable-next-line:no-empty
 const emptyFunction: Model.LoggerFn = () => {};
-const stubLogger = {
+
+const stubLogger: Record<"info" | "error", Model.LoggerFn> = {
     info: emptyFunction,
     error: emptyFunction,
 };
 
 class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
-    private static readonly registerStat: Record<string, { channel: string; index: number; listenersCount: number }> = {};
-
     private static readonly defaultNotificationWrapper: Required<Model.CallOptions>["notificationWrapper"]
         = ((fn) => fn()) as (fn: (...args: Model.TODO[]) => void) => void;
 
@@ -26,36 +25,42 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
 
     private readonly options: { channel: string; callTimeoutMs: number; logger: Model.Logger };
 
-    constructor(opts: { channel: string; defaultCallTimeoutMs?: number; logger?: Model.Logger }) {
-        this.options = {
-            channel: opts.channel,
-            callTimeoutMs: typeof opts.defaultCallTimeoutMs !== "undefined" ? opts.defaultCallTimeoutMs : ONE_SECOND_MS * 3,
-            logger: opts.logger ? opts.logger : stubLogger,
-        };
+    constructor(
+        {
+            channel,
+            callTimeoutMs = ONE_SECOND_MS * 3,
+            logger = stubLogger,
+        }: {
+            channel: string;
+            callTimeoutMs?: number;
+            logger?: Model.Logger;
+        },
+    ) {
+        this.options = {channel, callTimeoutMs, logger};
     }
 
     public register<ActionName extends keyof Actions>(
         actions: Actions,
         em: Model.CombinedEventEmitter,
-        config: {
+        {
+            requestResolver,
+            logger = this.options.logger,
+        }: {
             requestResolver?: Model.RequestResolver;
             logger?: Model.Logger;
         } = {},
     ): () => void {
-        const logger = config.logger || this.options.logger;
         const {channel} = this.options;
-        const stat: typeof Service.registerStat[typeof channel] = Service.registerStat[channel]
-            = (Service.registerStat[channel] || {channel, index: 0, listenersCount: 0});
-        const index = stat.index++;
-        const subscriptions = new Map<PayloadUid, Subscription>();
+        const subscriptions = new Map<Model.PayloadUid, Subscription>();
         const arrayOfEvenNameAndHandler: Model.Arguments<typeof em.on> = [
             channel,
             (...args: Model.TODO[]) => {
-                const resolvedArgs = config.requestResolver ? config.requestResolver(...args) : false;
+                const resolvedArgs = requestResolver ? requestResolver(...args) : false;
                 const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.TODO> = resolvedArgs
                     ? resolvedArgs.payload
                     : args[0];
                 const {name, uid} = payload;
+                const loggingData = JSON.stringify({channel, name, type: payload.type, uid}); // WARN: don't log the actual data
 
                 // unsubscribe forced on the client side, normally on "finishPromise" resolving
                 if (payload.type === "unsubscribe") {
@@ -63,6 +68,8 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     if (toUnsubscribe) {
                         toUnsubscribe.unsubscribe();
                         subscriptions.delete(uid);
+                        logger.info(`provider.unsubscribe: ${loggingData}`);
+                        logger.info(`subscription removed: ${loggingData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`);
                     }
                     return;
                 }
@@ -89,42 +96,41 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         const responseData = payload.serialization === "jsan" ? jsan.stringify(value, null, null, {refs: true}) : value;
                         const output: ActualResponsePayload = {...response, data: responseData};
                         emitter.emit(channel, output);
-                        logger.info(`emitted.data: ${JSON.stringify({index})}`);
+                        logger.info(`provider.emit: ${loggingData}`);
                     },
                     (error: Error) => {
                         const output: ActualResponsePayload = {...response, error: serializerr(error)};
                         emitter.emit(channel, output);
-                        logger.error(`emitted.error: ${JSON.stringify({index})}`, error);
+                        logger.error(`provider.error: ${loggingData}`, error);
                         setTimeout(() => unsubscribe, 0);
                     },
                     () => {
                         const output: ActualResponsePayload = {...response, complete: true};
                         emitter.emit(channel, output);
-                        logger.info(`emitted.complete: ${JSON.stringify({index})}`);
+                        logger.info(`provider.complete: ${loggingData}`);
                         setTimeout(() => unsubscribe, 0);
                     }, // TODO emit "complete" event to close observable on client side
                 );
                 const unsubscribe = () => {
                     subscription.unsubscribe();
                     subscriptions.delete(uid);
-                    logger.info(`subscription removed: ${JSON.stringify({subscriptionsCount: subscriptions.size, index})}`);
+                    logger.info(`subscription removed: ${loggingData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`);
                 };
 
                 subscriptions.set(uid, subscription);
-                logger.info(`subscription added: ${JSON.stringify({subscriptionsCount: subscriptions.size, index})}`);
+                logger.info(`subscription added: ${loggingData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`);
             },
         ];
 
         em.on(...arrayOfEvenNameAndHandler);
-        stat.listenersCount++;
 
-        logger.info(`registered: ${JSON.stringify({actionsKeys: Object.keys(actions), index, stat})}`);
+        logger.info(`registered: ${JSON.stringify({actionsKeys: Object.keys(actions)})}`);
 
         return () => {
             em.off(...arrayOfEvenNameAndHandler);
             subscriptions.forEach((subscription) => subscription.unsubscribe());
             subscriptions.clear();
-            logger.info(`unregistered: ${JSON.stringify({index, stat})}`);
+            logger.info(`"unregister" called`);
         };
     }
 
