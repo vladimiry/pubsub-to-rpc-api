@@ -10,7 +10,7 @@ export type Input = TODO | never;
 
 export type Output = TODO | never;
 
-type OutputWrapper<T extends Output> = Observable<T>;
+export type OutputWrapper<T extends Output> = Observable<T>;
 
 export type Action<I extends Input = Input, O extends Output = Output, R = OutputWrapper<O>> = (arg: I) => R;
 

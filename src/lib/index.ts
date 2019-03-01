@@ -140,7 +140,9 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
         options: Model.CallOptions,
         emitters: Model.Emitters | Model.EmittersResolver,
     ): Actions[ActionName] {
-        type Return = ReturnType<Actions[ActionName]>;
+        type ActionFn = Actions[ActionName];
+        type ActionResult = ReturnType<ActionFn>;
+        type ActionResultValue = Model.UnpackedActionResult<ReturnType<ActionFn>>;
 
         const self = this;
         const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
@@ -150,17 +152,15 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
 
         this.ensureListeningSetup(subscribeChannel, listener);
 
-        // tslint:disable:only-arrow-functions
-        return function() {
+        return ((...args: Model.Arguments<ActionFn>) => {
             const request: Model.RequestPayload<ActionName> = {
                 uid: uuid.v4(),
                 type: "request",
                 serialization: options.serialization,
                 name,
-                ...(arguments.length && {data: arguments[0]}),
+                ...(args.length && {data: args[0]}),
             };
-
-            return new Observable<Return>((observer: Subscriber<Return>) => {
+            const observable$: Model.OutputWrapper<ActionResultValue> = new Observable((observer: Subscriber<ActionResultValue>) => {
                 const callsByChannelMap = self.callsListenersMap.get(listener);
                 const callsMap = callsByChannelMap && callsByChannelMap.get(subscribeChannel);
 
@@ -175,6 +175,8 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         runNotification(() => observer.error(new Error(
                             `Invocation timeout of "${name}" method on "${emitChannel}" channel with ${options.timeoutMs}ms timeout`,
                         )));
+                        // sending forced unsubscribe signal to api provider
+                        emitter.emit(emitChannel, {uid: request.uid, type: "unsubscribe"});
                     },
                     options.timeoutMs,
                 );
@@ -206,7 +208,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     {
                         error,
                         complete,
-                        next(data: Return) {
+                        next(data: ActionResult) {
                             releaseTimeout();
                             runNotification(() => {
                                 observer.next(options.serialization === "jsan"
@@ -221,7 +223,9 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 // execute the call
                 emitter.emit(emitChannel, request);
             });
-        };
+
+            return observable$;
+        }) as Model.TODO;
     }
 
     public caller(
