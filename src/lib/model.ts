@@ -84,8 +84,9 @@ export type UnpackedActionResult<T extends ReturnType<Action>> =
 export type LoggerFn = (...args: TODO[]) => void;
 
 export interface Logger {
-    info: LoggerFn;
     error: LoggerFn;
+    info: LoggerFn;
+    verbose: LoggerFn;
 }
 
 export const ACTION_CONTEXT_SYMBOL = Symbol(`pubsub-to-stream-api:ACTION_CONTEXT_SYMBOL`);

@@ -11,9 +11,10 @@ const ONE_SECOND_MS = 1000;
 // tslint:disable-next-line:no-empty
 const emptyFunction: Model.LoggerFn = () => {};
 
-const stubLogger: Record<"info" | "error", Model.LoggerFn> = {
-    info: emptyFunction,
+const stubLogger: Record<"error" | "info" | "verbose", Model.LoggerFn> = {
     error: emptyFunction,
+    info: emptyFunction,
+    verbose: emptyFunction,
 };
 
 // TODO curry provided logger with this argument instead of imperative string concatenation
@@ -39,6 +40,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             logger?: Model.Logger;
         },
     ) {
+        logger.info(`${logPrefix} constructor()`);
         this.options = {channel, callTimeoutMs, logger};
     }
 
@@ -53,6 +55,8 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
             logger?: Model.Logger;
         } = {},
     ): () => void {
+        logger.info(`${logPrefix} register()`);
+
         const {channel} = this.options;
         const subscriptions = new Map<Model.PayloadUid, Subscription>();
         const arrayOfEvenNameAndHandler: Model.Arguments<typeof em.on> = [
@@ -71,10 +75,10 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     if (toUnsubscribe) {
                         toUnsubscribe.unsubscribe();
                         subscriptions.delete(uid);
-                        logger.info(
+                        logger.verbose(
                             `${logPrefix} provider.unsubscribe: ${logData}`,
                         );
-                        logger.info(
+                        logger.verbose(
                             `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
                         );
                     }
@@ -103,7 +107,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         const responseData = payload.serialization === "jsan" ? jsan.stringify(value, null, null, {refs: true}) : value;
                         const output: ActualResponsePayload = {...response, data: responseData};
                         emitter.emit(channel, output);
-                        logger.info(`${logPrefix} provider.emit: ${logData}`);
+                        logger.verbose(`${logPrefix} provider.emit: ${logData}`);
                     },
                     (error: Error) => {
                         const output: ActualResponsePayload = {...response, error: serializerr(error)};
@@ -114,20 +118,20 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     () => {
                         const output: ActualResponsePayload = {...response, complete: true};
                         emitter.emit(channel, output);
-                        logger.info(`${logPrefix} provider.complete: ${logData}`);
+                        logger.verbose(`${logPrefix} provider.complete: ${logData}`);
                         setTimeout(() => unsubscribe, 0);
                     }, // TODO emit "complete" event to close observable on client side
                 );
                 const unsubscribe = () => {
                     subscription.unsubscribe();
                     subscriptions.delete(uid);
-                    logger.info(
+                    logger.verbose(
                         `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
                     );
                 };
 
                 subscriptions.set(uid, subscription);
-                logger.info(
+                logger.verbose(
                     `${logPrefix} subscription added: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
                 );
             },
