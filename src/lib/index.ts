@@ -16,6 +16,9 @@ const stubLogger: Record<"info" | "error", Model.LoggerFn> = {
     error: emptyFunction,
 };
 
+// TODO curry provided logger with this argument instead of imperative string concatenation
+const logPrefix = "[pubsub-to-stream-api]";
+
 class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
     private static readonly defaultNotificationWrapper: Required<Model.CallOptions>["notificationWrapper"]
         = ((fn) => fn()) as (fn: (...args: Model.TODO[]) => void) => void;
@@ -60,7 +63,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     ? resolvedArgs.payload
                     : args[0];
                 const {name, uid} = payload;
-                const loggingData = JSON.stringify({channel, name, type: payload.type, uid}); // WARN: don't log the actual data
+                const logData = JSON.stringify({channel, name, type: payload.type, uid}); // WARN: don't log the actual data
 
                 // unsubscribe forced on the client side, normally on "finishPromise" resolving
                 if (payload.type === "unsubscribe") {
@@ -68,8 +71,12 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     if (toUnsubscribe) {
                         toUnsubscribe.unsubscribe();
                         subscriptions.delete(uid);
-                        logger.info(`provider.unsubscribe: ${loggingData}`);
-                        logger.info(`subscription removed: ${loggingData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`);
+                        logger.info(
+                            `${logPrefix} provider.unsubscribe: ${logData}`,
+                        );
+                        logger.info(
+                            `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
+                        );
                     }
                     return;
                 }
@@ -96,41 +103,45 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         const responseData = payload.serialization === "jsan" ? jsan.stringify(value, null, null, {refs: true}) : value;
                         const output: ActualResponsePayload = {...response, data: responseData};
                         emitter.emit(channel, output);
-                        logger.info(`provider.emit: ${loggingData}`);
+                        logger.info(`${logPrefix} provider.emit: ${logData}`);
                     },
                     (error: Error) => {
                         const output: ActualResponsePayload = {...response, error: serializerr(error)};
                         emitter.emit(channel, output);
-                        logger.error(`provider.error: ${loggingData}`, error);
+                        logger.error(`${logPrefix} provider.error: ${logData}`, error);
                         setTimeout(() => unsubscribe, 0);
                     },
                     () => {
                         const output: ActualResponsePayload = {...response, complete: true};
                         emitter.emit(channel, output);
-                        logger.info(`provider.complete: ${loggingData}`);
+                        logger.info(`${logPrefix} provider.complete: ${logData}`);
                         setTimeout(() => unsubscribe, 0);
                     }, // TODO emit "complete" event to close observable on client side
                 );
                 const unsubscribe = () => {
                     subscription.unsubscribe();
                     subscriptions.delete(uid);
-                    logger.info(`subscription removed: ${loggingData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`);
+                    logger.info(
+                        `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
+                    );
                 };
 
                 subscriptions.set(uid, subscription);
-                logger.info(`subscription added: ${loggingData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`);
+                logger.info(
+                    `${logPrefix} subscription added: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
+                );
             },
         ];
 
         em.on(...arrayOfEvenNameAndHandler);
 
-        logger.info(`registered: ${JSON.stringify({actionsKeys: Object.keys(actions)})}`);
+        logger.info(`${logPrefix} registered: ${JSON.stringify({actionsKeys: Object.keys(actions)})}`);
 
         return () => {
             em.off(...arrayOfEvenNameAndHandler);
             subscriptions.forEach((subscription) => subscription.unsubscribe());
             subscriptions.clear();
-            logger.info(`"unregister" called`);
+            logger.info(`${logPrefix} "unregister" called`);
         };
     }
 
