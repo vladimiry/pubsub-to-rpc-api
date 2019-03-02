@@ -11,8 +11,9 @@ const ONE_SECOND_MS = 1000;
 // tslint:disable-next-line:no-empty
 const emptyFunction: Model.LoggerFn = () => {};
 
-const stubLogger: Record<"error" | "info" | "verbose" | "debug", Model.LoggerFn> = {
+const stubLogger: Record<keyof Model.Logger, Model.LoggerFn> = {
     error: emptyFunction,
+    warn: emptyFunction,
     info: emptyFunction,
     verbose: emptyFunction,
     debug: emptyFunction,
@@ -72,18 +73,22 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
 
                 // unsubscribe forced on the client side, normally on "finishPromise" resolving
                 if (payload.type === "unsubscribe") {
-                    const toUnsubscribe = subscriptions.get(uid);
-                    if (toUnsubscribe) {
-                        toUnsubscribe.unsubscribe();
-                        subscriptions.delete(uid);
-                        logger.debug(
-                            `${logPrefix} provider.unsubscribe: ${logData}`,
-                        );
-                        logger.debug(
-                            `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
-                        );
+                    const subscription = subscriptions.get(uid);
+
+                    if (!subscription) {
+                        logger.warn(`${logPrefix} failed to resolve subscription by uid: ${uid}`);
+                        return;
                     }
-                    return;
+
+                    subscription.unsubscribe();
+                    subscriptions.delete(uid);
+
+                    logger.debug(
+                        `${logPrefix} provider.unsubscribe: ${logData}`,
+                    );
+                    logger.debug(
+                        `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
+                    );
                 }
 
                 if (payload.type !== "request") {
@@ -110,7 +115,7 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                         const subscription = subscriptions.get(uid);
 
                         if (!subscription) {
-                            logger.debug(`${logPrefix} failed to resolve unsubscriber: ${logData}`);
+                            logger.warn(`${logPrefix} failed to resolve subscription: ${logData}`);
                             return;
                         }
 

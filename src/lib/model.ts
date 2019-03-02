@@ -85,6 +85,7 @@ export type LoggerFn = (...args: TODO[]) => void;
 
 export interface Logger {
     error: LoggerFn;
+    warn: LoggerFn;
     info: LoggerFn;
     verbose: LoggerFn;
     debug: LoggerFn;
