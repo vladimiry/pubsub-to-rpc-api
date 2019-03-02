@@ -87,6 +87,7 @@ export interface Logger {
     error: LoggerFn;
     info: LoggerFn;
     verbose: LoggerFn;
+    debug: LoggerFn;
 }
 
 export const ACTION_CONTEXT_SYMBOL = Symbol(`pubsub-to-stream-api:ACTION_CONTEXT_SYMBOL`);

@@ -11,10 +11,11 @@ const ONE_SECOND_MS = 1000;
 // tslint:disable-next-line:no-empty
 const emptyFunction: Model.LoggerFn = () => {};
 
-const stubLogger: Record<"error" | "info" | "verbose", Model.LoggerFn> = {
+const stubLogger: Record<"error" | "info" | "verbose" | "debug", Model.LoggerFn> = {
     error: emptyFunction,
     info: emptyFunction,
     verbose: emptyFunction,
+    debug: emptyFunction,
 };
 
 // TODO curry provided logger with this argument instead of imperative string concatenation
@@ -75,10 +76,10 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     if (toUnsubscribe) {
                         toUnsubscribe.unsubscribe();
                         subscriptions.delete(uid);
-                        logger.verbose(
+                        logger.debug(
                             `${logPrefix} provider.unsubscribe: ${logData}`,
                         );
-                        logger.verbose(
+                        logger.debug(
                             `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
                         );
                     }
@@ -102,36 +103,59 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     ? resolvedArgs.emitter
                     : em;
                 const response: ActualResponsePayload = {uid, name, type: "response"};
-                const subscription = actionResult.subscribe(
-                    (value: Model.TODO) => {
-                        const responseData = payload.serialization === "jsan" ? jsan.stringify(value, null, null, {refs: true}) : value;
-                        const output: ActualResponsePayload = {...response, data: responseData};
-                        emitter.emit(channel, output);
-                        logger.verbose(`${logPrefix} provider.emit: ${logData}`);
-                    },
-                    (error: Error) => {
-                        const output: ActualResponsePayload = {...response, error: serializerr(error)};
-                        emitter.emit(channel, output);
-                        logger.error(`${logPrefix} provider.error: ${logData}`, error);
-                        setTimeout(() => unsubscribe, 0);
-                    },
-                    () => {
-                        const output: ActualResponsePayload = {...response, complete: true};
-                        emitter.emit(channel, output);
-                        logger.verbose(`${logPrefix} provider.complete: ${logData}`);
-                        setTimeout(() => unsubscribe, 0);
-                    }, // TODO emit "complete" event to close observable on client side
-                );
                 const unsubscribe = () => {
-                    subscription.unsubscribe();
-                    subscriptions.delete(uid);
-                    logger.verbose(
-                        `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
-                    );
+                    logger.debug(`${logPrefix} triggered unsubscribing: ${logData}`);
+
+                    setTimeout(() => {
+                        const subscription = subscriptions.get(uid);
+
+                        if (!subscription) {
+                            logger.debug(`${logPrefix} failed to resolve unsubscriber: ${logData}`);
+                            return;
+                        }
+
+                        subscription.unsubscribe();
+                        subscriptions.delete(uid);
+
+                        logger.debug(
+                            `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
+                        );
+                    }, 0);
                 };
 
-                subscriptions.set(uid, subscription);
-                logger.verbose(
+                subscriptions.set(
+                    uid,
+                    actionResult.subscribe(
+                        (value: Model.TODO) => {
+                            const responseData = payload.serialization === "jsan"
+                                ? jsan.stringify(value, null, null, {refs: true})
+                                : value;
+                            const output: ActualResponsePayload = {...response, data: responseData};
+
+                            emitter.emit(channel, output);
+
+                            logger.debug(`${logPrefix} provider.emit: ${logData}`);
+                        },
+                        (error: Error) => {
+                            const output: ActualResponsePayload = {...response, error: serializerr(error)};
+
+                            emitter.emit(channel, output);
+                            unsubscribe();
+
+                            logger.error(`${logPrefix} provider.error: ${logData}`, error);
+                        },
+                        () => {
+                            const output: ActualResponsePayload = {...response, complete: true};
+
+                            emitter.emit(channel, output);
+                            unsubscribe();
+
+                            logger.debug(`${logPrefix} provider.complete: ${logData}`);
+                        },
+                    ),
+                );
+
+                logger.debug(
                     `${logPrefix} subscription added: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
                 );
             },
