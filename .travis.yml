@@ -7,13 +7,18 @@ os:
 sudo: false
 language: node_js
 node_js:
+  - "lts/*"
   - "6"
   - "8"
   - "10"
 cache:
   yarn: true
+before_install:
+  - | # installing the most recent yarn version
+    curl -o- -L https://yarnpkg.com/install.sh | bash;
+    export PATH="$HOME/.yarn/bin:$PATH";
 install:
-  - yarn install
+  - yarn --pure-lockfile
   - yarn add rxjs@6
 script:
   - node --version

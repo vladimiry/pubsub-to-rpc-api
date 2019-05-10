@@ -1,19 +1,22 @@
 {
-  // https://www.typescriptlang.org/docs/handbook/tsconfig-json.html
-  // https://www.typescriptlang.org/docs/handbook/compiler-options.html
+  "extends": "./tsconfig.checks.json",
   "compilerOptions": {
+    /*
+    resolving & capabilities
+    */
+    "esModuleInterop": true,
+    /*
+    emitting
+    */
     "target": "es5",
     "module": "commonjs",
     "importHelpers": true,
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    // "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
     "noEmitOnError": true,
     "declaration": true,
     "sourceMap": true,
+    /*
+    paths
+    */
     "lib": [
       "es5",
       "es2015"

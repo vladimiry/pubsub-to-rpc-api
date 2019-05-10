@@ -3,22 +3,22 @@ import sinon from "sinon";
 import test from "ava";
 import uuid from "uuid-browser";
 import {delay, map, take} from "rxjs/operators";
-import {EMPTY, interval, merge, of, throwError} from "rxjs";
-import {EventEmitter} from "eventemitter3";
+import {EMPTY, from, interval, merge, of, throwError} from "rxjs";
+import {EventEmitter} from "events";
 
-import {Model, Service} from "../dist/index";
+import {instance, Model} from "../dist/index";
+import {Any, RequestPayload, ResponsePayload} from "../dist/private/model";
 
-// TODO test a whole emitter|listener.on|off|emit cycle of provider and client
+// TODO test a whole emitter/listener.on/off/emit cycle of provider and client
 // TODO test multiple registered api sets on the single service
 
 test("calling 2 methods", async (t) => {
-    interface Api {
-        method1: Model.Action<{ input1: string }, { output1: number }>;
-        method2: Model.Action<number, { output2: number }>;
-    }
-
+    const API = {
+        method1: (arg1: { input1: string; }) => Model.ReturnType.Promise<{ output1: number }>(),
+        method2: (arg1: number) => Model.ReturnType.Observable<{ output2: number }>(),
+    };
     const channel = randomStr();
-    const service = new Service<Api>({channel});
+    const service = instance({channel, actionsDefinition: API});
     const providerEmitters = {emitter: new EventEmitter(), listener: new EventEmitter()};
     const clientEmitters = {emitter: providerEmitters.listener, listener: providerEmitters.emitter};
     const method1Input = {input1: randomStr()};
@@ -31,7 +31,7 @@ test("calling 2 methods", async (t) => {
 
     service.register(
         {
-            method1: (val) => of(method1Expected),
+            method1: async (val) => method1Expected,
             method2: (val) => interval(150).pipe(
                 take(3),
                 map((v) => ({output2: val * v})),
@@ -39,26 +39,30 @@ test("calling 2 methods", async (t) => {
         },
         providerEmitters.listener,
         {
-            requestResolver: (payload) => ({payload, emitter: providerEmitters.emitter}),
+            requestResolver: (payload) => {
+                return {payload, emitter: providerEmitters.emitter};
+            },
         },
     );
 
     await merge(
-        client("method1")(method1Input),
+        from(client("method1")(method1Input)),
         client("method2")(method2Input),
     ).toPromise();
 
     t.true(clientEmitterSpy.calledWithExactly(
         channel,
-        sinon.match((request: Model.RequestPayload<keyof Api>) => {
+        sinon.match((request: RequestPayload<typeof API>) => {
             const uid = Boolean(request.uid.length);
             const type = request.type === "request";
             const name = request.name === "method1" || request.name === "method2";
-            const data = request.name === "method1"
-                ? "data" in request && request.data === method1Input
-                : request.name === "method2"
-                    ? "data" in request && request.data === method2Input
-                    : false;
+            const data = "args" in request
+                ? (
+                    (request.name === "method1" && request.args[0] === method1Input)
+                    ||
+                    (request.name === "method2" && request.args[0] === method2Input)
+                )
+                : false;
 
             return uid && type && name && data;
         }, "request"),
@@ -66,10 +70,10 @@ test("calling 2 methods", async (t) => {
 
     t.true(providerEmitterSpy.calledWithExactly(
         channel,
-        sinon.match((response: Model.ResponsePayload<keyof Api, Model.TODO>) => {
+        sinon.match((response: ResponsePayload<typeof API>) => {
             const uid = Boolean(response.uid.length);
             const type = response.type === "response";
-            const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems);
+            const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems as Any);
 
             return uid && type && data;
         }, "request"),
@@ -77,7 +81,12 @@ test("calling 2 methods", async (t) => {
 });
 
 test("backend error", async (t) => {
-    const service = new Service<{ method: Model.Action<string, number> }>({channel: "channel-345"});
+    const service = instance({
+        channel: "channel-345",
+        actionsDefinition: {
+            method: (arg1: string) => Model.ReturnType.Observable<number>(),
+        },
+    });
     const emitter = new EventEmitter();
 
     service.register(
@@ -96,7 +105,12 @@ test("backend error", async (t) => {
 
 test("timeout error", async (t) => {
     const channel = randomStr();
-    const service = new Service<{ numberToString: Model.Action<number, string> }>({channel});
+    const service = instance({
+        channel,
+        actionsDefinition: {
+            numberToString: (arg1: number) => Model.ReturnType.Observable<string>(),
+        },
+    });
     const emitter = new EventEmitter();
     const inputValue = 123;
     const method = "numberToString";
@@ -114,12 +128,11 @@ test("timeout error", async (t) => {
 });
 
 test("calling method without input an argument", async (t) => {
-    interface Api {
-        ping: Model.ActionWithoutInput<never>;
-    }
-
+    const API = {
+        ping: () => Model.ReturnType.Observable<never>(),
+    };
     const channel = randomStr();
-    const service = new Service<Api>({channel});
+    const service = instance({channel, actionsDefinition: API});
     const em = new EventEmitter();
     const emitSpy = sinon.spy(em, "emit");
 
@@ -128,7 +141,12 @@ test("calling method without input an argument", async (t) => {
 
     t.true(emitSpy.calledWithExactly(
         channel,
-        sinon.match((request: Model.RequestPayload<keyof Api>) => !("data" in request), "dataLessRequest"),
+        sinon.match(
+            (request: RequestPayload<typeof API>) => {
+                return request.type === "request" && request.args.length === 0;
+            },
+            "request should have empty \"args\" array",
+        ),
     ));
 });
 
@@ -138,7 +156,7 @@ test("preserve references", async (t) => {
         parse: sinon.spy(originalJsan, "parse"),
         stringify: sinon.spy(originalJsan, "stringify"),
     };
-    const {Service: MockedService} = await rewiremock.around(
+    const {instance: mockedInstance} = await rewiremock.around(
         () => import("../dist/index"),
         (mock) => {
             mock(() => import("jsan")).callThrough().with(mockedJsan);
@@ -150,12 +168,16 @@ test("preserve references", async (t) => {
         o: { s: string };
     }
 
-    interface Api {
+    interface Output {
         o1: O1;
         o1_list: O1[];
     }
 
-    const service = new MockedService<{ method: Model.Action<boolean, Api> }>({channel: randomStr()});
+    const API = {
+        method: (arg: boolean) => Model.ReturnType.Observable<Output>(),
+    };
+    const channel = randomStr();
+    const service = mockedInstance({channel, actionsDefinition: API});
     const em = new EventEmitter();
     const emOpts = {listener: em, emitter: em};
     const jsanCaller = service.caller(emOpts, {timeoutMs: 500, serialization: "jsan"});

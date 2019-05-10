@@ -1,82 +1,86 @@
 import jsan from "jsan";
 import deserializeError from "deserialize-error";
 import uuid from "uuid-browser";
-import {Observable, Subscriber, Subscription} from "rxjs";
+import {from, Observable, Subscriber, Subscription, throwError} from "rxjs";
 import {serializerr} from "serializerr";
 
-import * as Model from "./model";
+import * as M from "./model";
+import * as PM from "./private/model";
 
-const ONE_SECOND_MS = 1000;
-
-// tslint:disable-next-line:no-empty
-const emptyFunction: Model.LoggerFn = () => {};
-
-const stubLogger: Record<keyof Model.Logger, Model.LoggerFn> = {
-    error: emptyFunction,
-    warn: emptyFunction,
-    info: emptyFunction,
-    verbose: emptyFunction,
-    debug: emptyFunction,
+export {
+    M as Model,
+    instance,
 };
 
-// TODO curry provided logger with this argument instead of imperative string concatenation
-const logPrefix = "[pubsub-to-stream-api]";
+function instance<AD extends PM.ActionsDefinition<AD>>(
+    {
+        channel,
+        actionsDefinition,
+        callTimeoutMs = PM.ONE_SECOND_MS * 3,
+        logger: instanceLogger = PM.LOG_STUB,
+    }: {
+        channel: string;
+        actionsDefinition: AD,
+        callTimeoutMs?: number;
+        logger?: M.Logger;
+    },
+): Readonly<{
+    register: <A extends PM.Actions<AD>>(
+        actions: A,
+        em: M.CombinedEventEmitter,
+        options?: { requestResolver?: M.RequestResolver; logger?: M.Logger; },
+    ) => {
+        deregister: () => void;
+        subscriptionStat: () => { size: number; }
+    };
+    call: <A extends PM.Actions<AD>, N extends keyof A>(
+        name: N,
+        options: M.CallOptions,
+        emitters: M.Emitters | M.EmittersResolver,
+    ) => A[N];
+    caller: (
+        emiters: M.Emitters | M.EmittersResolver,
+        defaultOptions?: M.CallOptions,
+    ) => <A extends PM.Actions<AD>, N extends keyof A>(
+        name: N,
+        options?: M.CallOptions,
+    ) => A[N];
+}> {
+    // TODO provide "callsListenersMap" size/stats getting method
+    const callsListenersMap: WeakMap<M.Emitters["listener"], Map<string, ReturnType<typeof buildChannelCallsMap>>> = new WeakMap();
 
-class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>>> {
-    private static readonly defaultNotificationWrapper: Required<Model.CallOptions>["notificationWrapper"]
-        = ((fn) => fn()) as (fn: (...args: Model.TODO[]) => void) => void;
+    const register: ReturnType<typeof instance>["register"] = (
+        actions,
+        em,
+        options = {},
+    ) => {
+        const {logger = instanceLogger, requestResolver} = options;
 
-    private readonly callsListenersMap
-        = new WeakMap<Model.Emitters["listener"], Map<string, ReturnType<typeof Service.prototype.buildChannelCallsMap>>>();
+        logger.info(`${PM.LOG_PREFIX} register()`);
 
-    private readonly options: { channel: string; callTimeoutMs: number; logger: Model.Logger };
-
-    constructor(
-        {
+        const subscriptions: Map<PM.PayloadUid, Pick<Subscription, "unsubscribe">> = new Map();
+        const emOnOffHandlerArgs: PM.Arguments<typeof em.on> = [
             channel,
-            callTimeoutMs = ONE_SECOND_MS * 3,
-            logger = stubLogger,
-        }: {
-            channel: string;
-            callTimeoutMs?: number;
-            logger?: Model.Logger;
-        },
-    ) {
-        logger.info(`${logPrefix} constructor()`);
-        this.options = {channel, callTimeoutMs, logger};
-    }
-
-    public register<ActionName extends keyof Actions>(
-        actions: Actions,
-        em: Model.CombinedEventEmitter,
-        {
-            requestResolver,
-            logger = this.options.logger,
-        }: {
-            requestResolver?: Model.RequestResolver;
-            logger?: Model.Logger;
-        } = {},
-    ): () => void {
-        logger.info(`${logPrefix} register()`);
-
-        const {channel} = this.options;
-        const subscriptions = new Map<Model.PayloadUid, Subscription>();
-        const arrayOfEvenNameAndHandler: Model.Arguments<typeof em.on> = [
-            channel,
-            (...args: Model.TODO[]) => {
-                const resolvedArgs = requestResolver ? requestResolver(...args) : false;
-                const payload: Model.RequestPayload<ActionName> | Model.ResponsePayload<ActionName, Model.TODO> = resolvedArgs
+            (...args) => {
+                const resolvedArgs = requestResolver
+                    ? requestResolver(...args)
+                    : false;
+                const payload: PM.Payload<AD> = resolvedArgs
                     ? resolvedArgs.payload
                     : args[0];
+                // const resolvedArgs = requestResolver
+                //     ? requestResolver(...args)
+                //     : false;
+                // const {payload}: { payload: PM.Payload<AD> } = resolvedArgs || {payload: args[0]};
                 const {name, uid} = payload;
                 const logData = JSON.stringify({channel, name, type: payload.type, uid}); // WARN: don't log the actual data
 
-                // unsubscribe forced on the client side, normally on "finishPromise" resolving
+                // unsubscribe forced on the client side, normally occurring on "finishPromise" resolving
                 if (payload.type === "unsubscribe") {
                     const subscription = subscriptions.get(uid);
 
                     if (!subscription) {
-                        logger.warn(`${logPrefix} failed to resolve subscription by uid: ${uid}`);
+                        logger.warn(`${PM.LOG_PREFIX} failed to resolve subscription by uid: ${uid}`);
                         return;
                     }
 
@@ -84,10 +88,10 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     subscriptions.delete(uid);
 
                     logger.debug(
-                        `${logPrefix} provider.unsubscribe: ${logData}`,
+                        `${PM.LOG_PREFIX} provider.unsubscribe: ${logData}`,
                     );
                     logger.debug(
-                        `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
+                        `${PM.LOG_PREFIX} subscription removed: ${logData} ${JSON.stringify({subscriptions: subscriptions.size})}`,
                     );
                 }
 
@@ -95,117 +99,123 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     return;
                 }
 
-                const ctx: Model.ActionContext<typeof args> = {[Model.ACTION_CONTEXT_SYMBOL]: {args}};
-                const action: Model.Action | Model.ActionWithoutInput = actions[name];
-                const actionResult: ReturnType<typeof action> = "data" in payload
-                    ? (action as Model.Action).call(ctx, payload.data)
-                    : (action as Model.ActionWithoutInput).call(ctx);
+                const ctx: M.ActionContext<typeof args> = {[PM.ACTION_CONTEXT_SYMBOL]: {args}};
+                const action = actions[name];
 
-                type Output = Model.UnpackedActionResult<typeof actionResult>;
-                type ActualResponsePayload = Model.ResponsePayload<typeof name, Output>;
+                // TODO TS: get rid of typecasting
+                type ActionOutput = Extract<PM.ResponsePayload<AD>, { data: PM.Any }>["data"];
+                const actionResult = (action as PM.Any).apply(ctx, payload.args) as Observable<ActionOutput> | Promise<ActionOutput>;
 
-                const emitter = resolvedArgs
-                    ? resolvedArgs.emitter
-                    : em;
-                const response: ActualResponsePayload = {uid, name, type: "response"};
-                const unsubscribe = () => {
-                    logger.debug(`${logPrefix} triggered unsubscribing: ${logData}`);
+                const handlers = (() => {
+                    const emit = (() => {
+                        const {emitter} = resolvedArgs || {emitter: em};
+                        return (data: PM.ResponsePayload<AD>) => emitter.emit(channel, data);
+                    })();
+                    const unsubscribe = () => {
+                        logger.debug(`${PM.LOG_PREFIX} triggered unsubscribing: ${logData}`);
 
-                    setTimeout(() => {
-                        const subscription = subscriptions.get(uid);
+                        setTimeout(() => {
+                            const subscription = subscriptions.get(uid);
 
-                        if (!subscription) {
-                            logger.warn(`${logPrefix} failed to resolve subscription: ${logData}`);
-                            return;
-                        }
+                            if (!subscription) {
+                                logger.debug(`${PM.LOG_PREFIX} subscription has not been resolved: ${logData}`);
+                                return;
+                            }
 
-                        subscription.unsubscribe();
-                        subscriptions.delete(uid);
+                            subscription.unsubscribe();
+                            subscriptions.delete(uid);
 
-                        logger.debug(
-                            `${logPrefix} subscription removed: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
-                        );
-                    }, 0);
-                };
+                            logger.debug(
+                                `${PM.LOG_PREFIX} subscription removed: ${logData} ${JSON.stringify({subscriptions: subscriptions.size})}`,
+                            );
+                        }, 0);
+                    };
+                    const baseResponse: Readonly<Pick<PM.ResponsePayload<AD>, "uid" | "name" | "type">> = {type: "response", uid, name};
 
-                subscriptions.set(
-                    uid,
-                    actionResult.subscribe(
-                        (value: Model.TODO) => {
+                    return {
+                        next(value: ActionOutput) {
                             const responseData = payload.serialization === "jsan"
                                 ? jsan.stringify(value, null, null, {refs: true})
                                 : value;
-                            const output: ActualResponsePayload = {...response, data: responseData};
 
-                            emitter.emit(channel, output);
+                            emit({...baseResponse, data: responseData as typeof value});
 
-                            logger.debug(`${logPrefix} provider.emit: ${logData}`);
+                            logger.debug(`${PM.LOG_PREFIX} provider.emit: ${logData}`);
                         },
-                        (error: Error) => {
-                            const output: ActualResponsePayload = {...response, error: serializerr(error)};
-
-                            emitter.emit(channel, output);
+                        error(error: Error) {
+                            emit({...baseResponse, error: serializerr(error)});
                             unsubscribe();
 
-                            logger.error(`${logPrefix} provider.error: ${logData}`, error);
+                            logger.error(`${PM.LOG_PREFIX} provider.error: ${logData}`, error);
                         },
-                        () => {
-                            const output: ActualResponsePayload = {...response, complete: true};
-
-                            emitter.emit(channel, output);
+                        complete() {
+                            emit({...baseResponse, complete: true});
                             unsubscribe();
 
-                            logger.debug(`${logPrefix} provider.complete: ${logData}`);
+                            logger.debug(`${PM.LOG_PREFIX} provider.complete: ${logData}`);
                         },
-                    ),
+                    };
+                })();
+
+                const actionResult$ = ("subscribe" in actionResult && "pipe" in actionResult)
+                    ? actionResult
+                    : ("then" in actionResult && "catch" in actionResult)
+                        ? from(actionResult)
+                        : throwError(new Error("Unexpected action result type received"));
+
+                subscriptions.set(
+                    uid,
+                    actionResult$.subscribe(handlers.next, handlers.error, handlers.complete),
                 );
 
                 logger.debug(
-                    `${logPrefix} subscription added: ${logData} ${JSON.stringify({subscriptionsCount: subscriptions.size})}`,
+                    `${PM.LOG_PREFIX} subscription added: ${logData} ${JSON.stringify({subscriptions: subscriptions.size})}`,
                 );
             },
         ];
 
-        em.on(...arrayOfEvenNameAndHandler);
+        em.on(...emOnOffHandlerArgs);
 
-        logger.info(`${logPrefix} registered: ${JSON.stringify({actionsKeys: Object.keys(actions)})}`);
+        logger.info(`${PM.LOG_PREFIX} registered: ${JSON.stringify({actionsKeys: Object.keys(actions)})}`);
 
-        return () => {
-            em.off(...arrayOfEvenNameAndHandler);
-            subscriptions.forEach((subscription) => subscription.unsubscribe());
-            subscriptions.clear();
-            logger.info(`${logPrefix} "unregister" called`);
+        return {
+            deregister() {
+                em.off(...emOnOffHandlerArgs);
+                subscriptions.forEach((subscription) => subscription.unsubscribe());
+                subscriptions.clear();
+                logger.info(`${PM.LOG_PREFIX} "unregister" called`);
+            },
+            subscriptionStat() {
+                return {size: subscriptions.size};
+            },
         };
-    }
+    };
 
-    // TODO track function parameter extracting issue https://github.com/Microsoft/TypeScript/issues/24068
-    public call<ActionName extends keyof Actions>(
-        name: ActionName,
-        options: Model.CallOptions,
-        emitters: Model.Emitters | Model.EmittersResolver,
-    ): Actions[ActionName] {
-        type ActionFn = Actions[ActionName];
-        type ActionResult = ReturnType<ActionFn>;
-        type ActionResultValue = Model.UnpackedActionResult<ReturnType<ActionFn>>;
+    const call: ReturnType<typeof instance>["call"] = (
+        name,
+        options,
+        emitters,
+    ) => {
+        type Action = PM.Actions<AD>[keyof PM.Actions<AD>]; // TODO TS: use "PM.Actions<AD>[typeof name]"
+        type ActionOutput = PM.Unpacked<ReturnType<Action>>;
 
-        const self = this;
         const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
-        const {channel: emitChannel} = this.options;
-        const subscribeChannel = options.listenChannel || this.options.channel;
-        const runNotification = options.notificationWrapper || Service.defaultNotificationWrapper;
+        const emitChannel = channel;
+        const subscribeChannel = options.listenChannel || emitChannel;
+        const runNotification = options.notificationWrapper || PM.DEFAULT_NOTIFICATION_WRAPPER;
 
-        this.ensureListeningSetup(subscribeChannel, listener);
+        ensureListeningSetup(subscribeChannel, listener);
 
-        return ((...args: Model.Arguments<ActionFn>) => {
-            const request: Model.RequestPayload<ActionName> = {
+        return ((...args: PM.Arguments<Action>) => {
+            const request: PM.RequestPayload<AD> = {
                 uid: uuid.v4(),
                 type: "request",
                 serialization: options.serialization,
-                name,
-                ...(args.length && {data: args[0]}),
+                name: name as unknown as keyof PM.Actions<AD>, // TODO TS: get rid of typecasting
+                args,
             };
-            const observable$: Model.OutputWrapper<ActionResultValue> = new Observable((observer: Subscriber<ActionResultValue>) => {
-                const callsByChannelMap = self.callsListenersMap.get(listener);
+            const observable$: Observable<ActionOutput> = new Observable((observer: Subscriber<ActionOutput>) => {
+                const callsByChannelMap = callsListenersMap.get(listener);
                 const callsMap = callsByChannelMap && callsByChannelMap.get(subscribeChannel);
 
                 if (!callsMap) { // not supposed to be undefined at this state
@@ -252,12 +262,13 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                     {
                         error,
                         complete,
-                        next(data: ActionResult) {
+                        next(data: ActionOutput) {
                             releaseTimeout();
                             runNotification(() => {
-                                observer.next(options.serialization === "jsan"
-                                    ? jsan.parse(data)
-                                    : data,
+                                observer.next(
+                                    options.serialization === "jsan"
+                                        ? jsan.parse(data as unknown as string)
+                                        : data,
                                 );
                             });
                         },
@@ -268,36 +279,56 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
                 emitter.emit(emitChannel, request);
             });
 
+            // TODO TS: get rid of typecasting
+            if (actionsDefinition[name as unknown as keyof PM.Actions<AD>]().type === "promise") {
+                return observable$.toPromise();
+            }
+
             return observable$;
-        }) as Model.TODO;
+        }) as PM.Any; // TODO TS: get rid of typecasting
+    };
+
+    const caller: ReturnType<typeof instance>["caller"] = (
+        emiters,
+        defaultOptions = {timeoutMs: callTimeoutMs},
+    ) => {
+        const emittersLessFn = (name: keyof PM.Actions<AD>, options: M.CallOptions = defaultOptions) => {
+            return call(
+                name,
+                {...defaultOptions, ...options},
+                emiters,
+            );
+        };
+        return emittersLessFn as PM.Any; // TODO TS: get rid of typecasting
+    };
+
+    return Object.freeze({
+        register,
+        call,
+        caller,
+    });
+
+    function buildChannelCallsMap<A extends PM.Actions<AD>>()
+        : Map<PM.PayloadUid, Pick<Subscriber<PM.Unpacked<ReturnType<A[keyof A]>>>, "next" | "complete" | "error">> {
+        return new Map();
     }
 
-    public caller(
-        emiters: Model.Emitters | Model.EmittersResolver,
-        defaultOptions: Model.CallOptions = {timeoutMs: this.options.callTimeoutMs},
+    function ensureListeningSetup<A extends PM.Actions<AD>, N extends keyof A>(
+        channel: string, // tslint:disable-line:no-shadowed-variable // intentionally named same as outer-scope "channel" variable
+        listener: M.Emitters["listener"],
     ) {
-        return <ActionName extends keyof Actions>(name: ActionName, options: Model.CallOptions = defaultOptions) => this.call(
-            name,
-            {...defaultOptions, ...options},
-            emiters,
-        );
-    }
-
-    private ensureListeningSetup<ActionName extends keyof Actions>(channel: string, listener: Model.Emitters["listener"]) {
-        type Return = ReturnType<Actions[keyof Actions]>;
-
-        let callsByChannelMap = this.callsListenersMap.get(listener);
+        let callsByChannelMap = callsListenersMap.get(listener);
 
         if (callsByChannelMap && callsByChannelMap.has(channel)) {
             return;
         }
 
-        const callsMap = this.buildChannelCallsMap();
+        const callsMap = buildChannelCallsMap();
 
         // register single handler per call channel
         listener.on( // TODO implement unsubscribe
             channel,
-            (payload: Model.ResponsePayload<ActionName, Return> | Model.RequestPayload<ActionName>) => {
+            (payload: PM.Payload<AD>) => {
                 const handler = callsMap.get(payload.uid);
 
                 if (!handler || payload.type !== "response") {
@@ -323,19 +354,10 @@ class Service<Actions extends Model.ActionsRecord<Extract<keyof Actions, string>
 
         if (!callsByChannelMap) {
             callsByChannelMap = new Map();
-            this.callsListenersMap.set(listener, callsByChannelMap);
+            callsListenersMap.set(listener, callsByChannelMap);
         }
 
         // keep individual calls handlers
         callsByChannelMap.set(channel, callsMap);
     }
-
-    private buildChannelCallsMap() {
-        return new Map<string, Pick<Subscriber<ReturnType<Actions[keyof Actions]>>, "next" | "complete" | "error">>();
-    }
 }
-
-export {
-    Model,
-    Service,
-};
