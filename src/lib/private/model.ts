@@ -60,14 +60,11 @@ export type Unpacked<T> =
 
 export type NeverIfEmpty<T> = keyof T extends never ? never : T;
 
-const MODULE_NAME_PREFIX = "[pubsub-to-stream-api]";
+export const MODULE_NAME_PREFIX = "[pubsub-to-stream-api]";
 
 export const ONE_SECOND_MS = 1000;
 
 export const ACTION_CONTEXT_SYMBOL = Symbol(`${MODULE_NAME_PREFIX}:ACTION_CONTEXT_SYMBOL`);
-
-// TODO curry provided logger with this argument instead of imperative string concatenation
-export const LOG_PREFIX = MODULE_NAME_PREFIX;
 
 export const EMPTY_FN: M.LoggerFn = () => {}; // tslint:disable-line:no-empty
 

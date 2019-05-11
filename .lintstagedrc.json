@@ -1,0 +1,9 @@
+{
+  "linters": {
+    "*.ts": [
+      "yarn run import-sort --write",
+      "yarn tslint -p ./tsconfig.json --fix",
+      "git add"
+    ]
+  }
+}

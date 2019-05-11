@@ -2,23 +2,23 @@ import rewiremock from "rewiremock";
 import sinon from "sinon";
 import test from "ava";
 import uuid from "uuid-browser";
-import {delay, map, take} from "rxjs/operators";
 import {EMPTY, from, interval, merge, of, throwError} from "rxjs";
 import {EventEmitter} from "events";
+import {delay, map, take} from "rxjs/operators";
 
-import {instance, Model} from "../dist/index";
-import {Any, RequestPayload, ResponsePayload} from "../dist/private/model";
+import * as PM from "lib/private/model";
+import {ActionReturnType, createService} from "lib";
 
 // TODO test a whole emitter/listener.on/off/emit cycle of provider and client
 // TODO test multiple registered api sets on the single service
 
 test("calling 2 methods", async (t) => {
     const API = {
-        method1: (arg1: { input1: string; }) => Model.ReturnType.Promise<{ output1: number }>(),
-        method2: (arg1: number) => Model.ReturnType.Observable<{ output2: number }>(),
+        method1: (arg1: { input1: string; }) => ActionReturnType.Promise<{ output1: number }>(),
+        method2: (arg1: number) => ActionReturnType.Observable<{ output2: number }>(),
     };
     const channel = randomStr();
-    const service = instance({channel, actionsDefinition: API});
+    const service = createService({channel, actionsDefinition: API});
     const providerEmitters = {emitter: new EventEmitter(), listener: new EventEmitter()};
     const clientEmitters = {emitter: providerEmitters.listener, listener: providerEmitters.emitter};
     const method1Input = {input1: randomStr()};
@@ -52,7 +52,7 @@ test("calling 2 methods", async (t) => {
 
     t.true(clientEmitterSpy.calledWithExactly(
         channel,
-        sinon.match((request: RequestPayload<typeof API>) => {
+        sinon.match((request: PM.RequestPayload<typeof API>) => {
             const uid = Boolean(request.uid.length);
             const type = request.type === "request";
             const name = request.name === "method1" || request.name === "method2";
@@ -70,10 +70,10 @@ test("calling 2 methods", async (t) => {
 
     t.true(providerEmitterSpy.calledWithExactly(
         channel,
-        sinon.match((response: ResponsePayload<typeof API>) => {
+        sinon.match((response: PM.ResponsePayload<typeof API>) => {
             const uid = Boolean(response.uid.length);
             const type = response.type === "response";
-            const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems as Any);
+            const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems as PM.Any);
 
             return uid && type && data;
         }, "request"),
@@ -81,10 +81,10 @@ test("calling 2 methods", async (t) => {
 });
 
 test("backend error", async (t) => {
-    const service = instance({
+    const service = createService({
         channel: "channel-345",
         actionsDefinition: {
-            method: (arg1: string) => Model.ReturnType.Observable<number>(),
+            method: (arg1: string) => ActionReturnType.Observable<number>(),
         },
     });
     const emitter = new EventEmitter();
@@ -104,35 +104,52 @@ test("backend error", async (t) => {
 });
 
 test("timeout error", async (t) => {
-    const channel = randomStr();
-    const service = instance({
-        channel,
-        actionsDefinition: {
-            numberToString: (arg1: number) => Model.ReturnType.Observable<string>(),
-        },
-    });
     const emitter = new EventEmitter();
     const inputValue = 123;
-    const method = "numberToString";
     const timeoutMs = 500;
+    const delayMs = timeoutMs * 1.5;
+    const methodObservable = "numberToStringObservable";
+    const methodPromise = "numberToStringPromise";
+    const channel = randomStr();
+    const service = createService({
+        channel,
+        actionsDefinition: {
+            [methodObservable]: (arg1: number) => ActionReturnType.Observable<string>(),
+            [methodPromise]: (arg1: number) => ActionReturnType.Promise<string>(),
+        },
+    });
     const client = service.caller({emitter, listener: emitter}, {timeoutMs});
+    const actions: PM.Arguments<typeof service.register>[0] = {
+        [methodObservable]: (arg1) => of(String(arg1)).pipe(delay(delayMs)),
+        [methodPromise]: async (arg1) => {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return String(arg1);
+        },
+    };
 
-    service.register({numberToString: (input) => of(String(input)).pipe(delay(1000))}, emitter);
+    service.register(actions, emitter);
 
-    await t.throwsAsync(
-        client(method)(inputValue).toPromise(),
-        `Invocation timeout of "${method}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
-    );
+    await Promise.all([
+        await t.throwsAsync(
+            client(methodObservable)(inputValue).toPromise(),
+            `Invocation timeout of "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
+        ),
+        await t.throwsAsync(
+            client(methodPromise)(inputValue),
+            `Invocation timeout of "${methodPromise}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
+        ),
+    ]);
 
-    t.is(String(inputValue), await client(method, {timeoutMs: 1500})(inputValue).toPromise());
+    t.is(String(inputValue), await client(methodObservable, {timeoutMs: delayMs * 1.2})(inputValue).toPromise());
+    t.is(String(inputValue), await client(methodPromise, {timeoutMs: delayMs * 1.2})(inputValue));
 });
 
 test("calling method without input an argument", async (t) => {
     const API = {
-        ping: () => Model.ReturnType.Observable<never>(),
+        ping: () => ActionReturnType.Observable<never>(),
     };
     const channel = randomStr();
-    const service = instance({channel, actionsDefinition: API});
+    const service = createService({channel, actionsDefinition: API});
     const em = new EventEmitter();
     const emitSpy = sinon.spy(em, "emit");
 
@@ -142,7 +159,7 @@ test("calling method without input an argument", async (t) => {
     t.true(emitSpy.calledWithExactly(
         channel,
         sinon.match(
-            (request: RequestPayload<typeof API>) => {
+            (request: PM.RequestPayload<typeof API>) => {
                 return request.type === "request" && request.args.length === 0;
             },
             "request should have empty \"args\" array",
@@ -156,8 +173,8 @@ test("preserve references", async (t) => {
         parse: sinon.spy(originalJsan, "parse"),
         stringify: sinon.spy(originalJsan, "stringify"),
     };
-    const {instance: mockedInstance} = await rewiremock.around(
-        () => import("../dist/index"),
+    const {createService: createServiceMocked} = await rewiremock.around(
+        () => import("lib"),
         (mock) => {
             mock(() => import("jsan")).callThrough().with(mockedJsan);
         },
@@ -173,11 +190,13 @@ test("preserve references", async (t) => {
         o1_list: O1[];
     }
 
-    const API = {
-        method: (arg: boolean) => Model.ReturnType.Observable<Output>(),
-    };
     const channel = randomStr();
-    const service = mockedInstance({channel, actionsDefinition: API});
+    const service = createServiceMocked({
+        channel,
+        actionsDefinition: {
+            method: (arg: boolean) => ActionReturnType.Observable<Output>(),
+        },
+    });
     const em = new EventEmitter();
     const emOpts = {listener: em, emitter: em};
     const jsanCaller = service.caller(emOpts, {timeoutMs: 500, serialization: "jsan"});

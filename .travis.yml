@@ -1,6 +1,8 @@
 # https://docs.travis-ci.com/user/customizing-the-build/
 
-if: tag IS blank
+branches:
+  only:
+    - master
 os:
   - linux
   - osx
@@ -24,4 +26,4 @@ script:
   - node --version
   - npm --version
   - yarn --version
-  - yarn run dist
+  - yarn run lib

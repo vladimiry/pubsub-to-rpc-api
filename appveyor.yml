@@ -1,8 +1,11 @@
+branches:
+  only:
+    - master
 environment:
   matrix:
-  - nodejs_version: "6"
-  - nodejs_version: "8"
-  - nodejs_version: "10"
+    - nodejs_version: "6"
+    - nodejs_version: "8"
+    - nodejs_version: "10"
 install:
   - ps: Install-Product node $env:nodejs_version
   - yarn --pure-lockfile
@@ -12,4 +15,4 @@ test_script:
   - node --version
   - npm --version
   - yarn --version
-  - yarn run dist
+  - yarn run lib

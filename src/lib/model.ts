@@ -1,4 +1,5 @@
 import * as PM from "./private/model";
+import {createService} from "./index";
 
 export type EventListener = Pick<NodeJS.EventEmitter, "on" | "off">;
 
@@ -40,7 +41,14 @@ export interface ActionContext<Args extends PM.Any[] = PM.Any[]> {
     [PM.ACTION_CONTEXT_SYMBOL]: Readonly<{ args: Readonly<Args> }>;
 }
 
-export const ReturnType = Object.freeze({
+export interface ScanServiceTypes<Instance extends ReturnType<typeof createService>,
+    Api extends PM.Arguments<Instance["register"]>[0] = PM.Arguments<Instance["register"]>[0]> {
+    Api: Api;
+    UnpackedApi: { [K in keyof Api]: Api[K] };
+}
+
+// tslint:disable-next-line:variable-name
+export const ActionReturnType = Object.freeze({
     Promise: <T>() => new PM.ReturnTypeWrapper<"promise", PM.NeverIfEmpty<T>>("promise"),
     Observable: <T>() => new PM.ReturnTypeWrapper<"observable", PM.NeverIfEmpty<T>>("observable"),
 });
