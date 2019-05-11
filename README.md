@@ -1,112 +1,147 @@
 # pubsub-to-stream-api
 
-Is a Node.js / browser library that converts _publish-subscribe / IPC_ - like interaction model into the _request/response_ model with _provider_ and _client_ parties involved. So it's like flattening _pub/sub_ interactions into a RxJS streams. It comes with type safety out of the box, thanks to TypeScript.
+Is a Node.js / browser library that converts _publish-subscribe / IPC_ - like interaction model into the _request/response_ model with _provider_ and _client_ parties involved. So it's like flattening _pub/sub_ interactions into the Observables or Promises. It comes with type safety out of the box, thanks to TypeScript.
 
 [![Build Status: Linux / MacOS](https://travis-ci.org/vladimiry/pubsub-to-stream-api.svg?branch=master)](https://travis-ci.org/vladimiry/pubsub-to-stream-api) [![Build status: Windows](https://ci.appveyor.com/api/projects/status/5tk7cwgldmsd5r8n?svg=true)](https://ci.appveyor.com/project/vladimiry/pubsub-to-stream-api)
 
 ## Getting started
 
-Your project needs `rxjs` module to be installed, which is a peer dependency of this project.
+Your project needs `rxjs@6` to be installed, which is a peer dependency of this module.
 
 Related source code is located [here](src/example/readme), can be executed by running `yarn example` console command.
 
-Let's first describe API methods and create service instance (shared.ts):
+Let's first describe API methods and create service instance ([shared/index.ts](src/example/readme/shared/index.ts)):
 ```typescript
 // no need to put implementation logic here
-// but only API structure definition and service instance creating
-// as this stuff is supposed to be shared between provider and client implementations
+// but only API definition and service instance creating
+// as this file is supposed to be shared between provider and client implementations
 
-import {Model, Service} from "pubsub-to-stream-api";
+import {ActionReturnType, ScanService, createService} from "pubsub-to-stream-api";
 
-// API structure
-export interface Api {
-    evaluateMathExpression: Model.Action<string, number>;
-    httpPing: Model.Action<Array<{ domain: string }>, Array<{ domain: string, time: number }>>;
-}
+export const API_SERVICE = createService({
+    // channel used to communicate between event emitters
+    channel: "some-event-name",
 
-// channel used to communicate between event emitters
-export const CHANNEL = "some-event-name";
+    // api definition
+    actionsDefinition: {
+        evaluateMathExpression: (expression: string) => ActionReturnType.Promise<number>(),
+        httpPing: (
+            ...args: Array<{
+                address?: string;
+                port?: number;
+                attempts?: number;
+                timeout?: number;
+            }>
+        ) => ActionReturnType.Observable<{ domain: string } & ({ time: number } | { error: string })>(),
+    },
+});
 
-// service shared between provider and client
-// there is no logic here, but channel and API structure definition only
-export const SERVICE = new Service<Api>({channel: CHANNEL});
+export type Api = ScanService<typeof API_SERVICE>["Api"];
 ```
 
-API implementation, ie provider side (provider.ts):
-```typescript
-import ping from "node-http-ping";
-import {evaluate} from "maths.ts";
-import {from, of} from "rxjs";
-import {map} from "rxjs/operators";
+`ActionReturnType.Promise` and `ActionReturnType.Observable` return values used to preserve action result type in runtime so the client-side code is able to distinguish return types not knowing anything about the actual API implementation at the provider-side.
 
-import {Api, SERVICE} from "./shared";
-import {EM_CLIENT, EM_PROVIDER} from "./event-emitters-mock";
+API implementation, ie provider side ([provider/index.ts](src/example/readme/provider/index.ts)):
+```typescript
+import tcpPing from "tcp-ping";
+import {evaluate} from "maths.ts";
+import {from, merge} from "rxjs";
+import {promisify} from "util";
+
+import {API_SERVICE, Api} from "../shared";
+import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
 // API implementation
-export const API_IMPL: Api = {
-    evaluateMathExpression: (input) => of(Number(String(evaluate(input)))),
-    httpPing: (items) => from(
-        Promise.all(items.map(({domain}) => ping(domain))),
-    ).pipe(
-        map((values) => values.map((time, i) => ({time, domain: items[i].domain}))),
+export const API: Api = {
+    evaluateMathExpression: async (input) => Number(String(evaluate(input))),
+    httpPing: (...entries) => merge(
+        ...entries
+            .map(async (entry) => {
+                const ping = await promisify(tcpPing.ping)(entry);
+                const baseResponse = {domain: ping.address};
+
+                return typeof ping.avg === "undefined" || isNaN(ping.avg)
+                    ? {...baseResponse, error: JSON.stringify(ping)}
+                    : {...baseResponse, time: ping.avg};
+            })
+            .map((promise) => from(promise)),
     ),
 };
 
-SERVICE.register(
-    API_IMPL,
+API_SERVICE.register(
+    API,
     EM_PROVIDER,
-    // this/3-rd parameter is optional
+    // 3-rd parameter is optional
     // if not defined, then "EM_PROVIDER" would be used for listening and emitting
     // but normally listening and emitting happens on different instances, so specifying separate emitting instance as 3rd parameter
     {
         requestResolver: (payload) => ({payload, emitter: EM_CLIENT}),
-        // in a more real world case you would extract emitter from the payload, Electron.js related example:
+        // in a more real world scenario you would extract emitter from the payload, see Electron.js example:
         // requestResolver: ({sender}, payload) => ({payload, emitter: {emit: sender.send.bind(sender)}}),
     },
 );
 ```
 
-Now we can call the defined and implemented methods in a type-safe way (client.ts):
+Now we can call the defined and implemented methods in a type-safe way ([client/index.ts](src/example/readme/client/index.ts)):
 ```typescript
-import {SERVICE} from "./shared";
-import {EM_CLIENT, EM_PROVIDER} from "./event-emitters-mock";
+// tslint:disable:no-console
 
-const client = SERVICE.caller({
-    emitter: EM_PROVIDER,
-    listener: EM_CLIENT,
-});
+import {API_SERVICE} from "../shared";
+import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
-client("evaluateMathExpression")("32 * 2").subscribe(console.log);
+const index = API_SERVICE.caller({emitter: EM_PROVIDER, listener: EM_CLIENT});
+const evaluateMathExpressionMethod = index("evaluateMathExpression"/*, {timeoutMs: 600}*/);
+const httpPingMethod = index("httpPing"/*, {timeoutMs: 600}*/);
 
-client("httpPing"/*, {timeoutMs: 600}*/)([
-    {domain: "https://google.com"},
-    {domain: "google.com"},
-    {domain: "https://github.com"},
-]).subscribe(console.log);
+evaluateMathExpressionMethod("32 * 2")
+    .then(console.log)
+    .catch(console.error);
+
+httpPingMethod({address: "google.com", attempts: 1}, {address: "github.com"}, {address: "1.1.1.1"})
+    .subscribe(console.log, console.error);
 ```
 
-And here is how API methods test structure might look (we leverage combination of `Api` model and TypeScript's `Record` type to make sure that tests for all the methods got defined):
+And here is how API methods test structure might look (we leverage combination of `Api` model and TypeScript's `Record` type to make sure that tests for all the methods got defined, see [provider/api.spec.ts](src/example/readme/provider/api.spec.ts)):
 ```typescript
 import test, {ExecutionContext, ImplementationResult} from "ava";
+import {bufferCount} from "rxjs/operators";
 
-import {Api} from "./shared";
-import {API_IMPL} from "./provider";
+import {API} from ".";
 
-const tests: Record<keyof Api, (t: ExecutionContext) => ImplementationResult> = {
+const apiActionsTestBundle: Record<keyof typeof API, (t: ExecutionContext) => ImplementationResult> = {
     evaluateMathExpression: async (t) => {
-        t.is(25, await API_IMPL.evaluateMathExpression("12 * 2 + 1").toPromise());
+        t.is(25, await API.evaluateMathExpression("12 * 2 + 1"));
     },
     httpPing: async (t) => {
-        const input = [{domain: "google.com"}];
-        const result = await API_IMPL.httpPing(input).toPromise();
-        t.is(input.length, result.length);
-        t.is(input[0].domain, result[0].domain);
-        t.is("number", typeof result[0].time);
+        const entries = [
+            {address: "google.com", attempts: 1},
+            {address: "github.com"},
+            {address: "1.1.1.1"},
+        ];
+
+        const results = await API
+            .httpPing(...entries)
+            .pipe(bufferCount(entries.length))
+            .toPromise();
+
+        // type checking like assertions implemented below are not really needed since TypeScript handles the type checking
+
+        t.is(results.length, entries.length);
+
+        for (const result of results) {
+            if ("time" in result) {
+                t.true(typeof result.time === "number");
+                t.false("error" in result);
+                continue;
+            }
+
+            t.true("error" in result && typeof result.error === "string");
+        }
     },
 };
 
 Object
-    .entries(tests)
+    .entries(apiActionsTestBundle)
     .forEach(([apiMethodName, testFn]) => {
         test(`API: ${apiMethodName}`, testFn);
     });
