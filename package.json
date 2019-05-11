@@ -12,6 +12,9 @@
     "api"
   ],
   "main": "./lib/index.js",
+  "engines": {
+    "node": ">=8"
+  },
   "scripts": {
     "example": "npm-run-all lib example:run",
     "example:compile": "tsc --listEmittedFiles -p ./src/example/tsconfig.json --outDir ./output",
