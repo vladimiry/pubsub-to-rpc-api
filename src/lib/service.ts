@@ -183,7 +183,7 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
 
         return {
             deregister() {
-                combinerEventEmitter.off(...emOnOffHandlerArgs);
+                combinerEventEmitter.removeListener(...emOnOffHandlerArgs);
                 subscriptions.forEach((subscription) => subscription.unsubscribe());
                 subscriptions.clear();
                 logger.info(`"unregister" called`);
@@ -246,7 +246,7 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
                 };
                 const release = () => {
                     releaseTimeout();
-                    listener.off(...listenerArgs);
+                    listener.removeListener(...listenerArgs);
                 };
                 const signals = {
                     error(e: ReturnType<typeof serializerr>) {
@@ -268,7 +268,7 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
                         runNotification(() => observer.complete());
                     },
                 } as const;
-                const listenerArgs: Readonly<PM.Arguments<typeof listener.on & typeof listener.off>> = [
+                const listenerArgs: Readonly<PM.Arguments<typeof listener.on & typeof listener.removeListener>> = [
                     listenChannel,
                     (payload: PM.Payload<AD>) => {
                         if (payload.type !== "response" || payload.uid !== request.uid) {

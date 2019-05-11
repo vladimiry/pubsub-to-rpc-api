@@ -3,7 +3,7 @@ import {Observable} from "rxjs";
 import * as PM from "./private/model";
 import {createService} from "./index";
 
-export type EventListener = Pick<NodeJS.EventEmitter, "on" | "off">;
+export type EventListener = Pick<NodeJS.EventEmitter, "on" | "removeListener">;
 
 export type EventEmitter = Pick<NodeJS.EventEmitter, "emit">;
 
