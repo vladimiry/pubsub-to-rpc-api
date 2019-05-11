@@ -60,7 +60,7 @@ export type Unpacked<T> =
 
 export type NeverIfEmpty<T> = keyof T extends never ? never : T;
 
-export const MODULE_NAME_PREFIX = "[pubsub-to-stream-api]";
+export const MODULE_NAME_PREFIX = "[pubsub-to-rpc-api]";
 
 export const ONE_SECOND_MS = 1000;
 

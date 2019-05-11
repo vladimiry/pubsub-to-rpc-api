@@ -1,10 +1,10 @@
 {
-  "name": "pubsub-to-stream-api",
+  "name": "pubsub-to-rpc-api",
   "version": "5.0.0-beta1",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
-  "repository": "git@github.com:vladimiry/pubsub-to-stream-api.git",
+  "repository": "git@github.com:vladimiry/pubsub-to-rpc-api.git",
   "keywords": [
     "pubsub",
     "rxjs",

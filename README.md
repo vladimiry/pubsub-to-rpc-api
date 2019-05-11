@@ -1,8 +1,8 @@
-# pubsub-to-stream-api
+# pubsub-to-rpc-api
 
 Is a Node.js / browser library that converts _publish-subscribe / IPC_ - like interaction model into the _request/response_ model with _provider_ and _client_ parties involved. So it's like flattening _pub/sub_ interactions into the Observables or Promises. It comes with type safety out of the box, thanks to TypeScript.
 
-[![Build Status: Linux / MacOS](https://travis-ci.org/vladimiry/pubsub-to-stream-api.svg?branch=master)](https://travis-ci.org/vladimiry/pubsub-to-stream-api) [![Build status: Windows](https://ci.appveyor.com/api/projects/status/5tk7cwgldmsd5r8n?svg=true)](https://ci.appveyor.com/project/vladimiry/pubsub-to-stream-api)
+[![Build Status: Linux / MacOS](https://travis-ci.org/vladimiry/pubsub-to-rpc-api.svg?branch=master)](https://travis-ci.org/vladimiry/pubsub-to-rpc-api) [![Build status: Windows](https://ci.appveyor.com/api/projects/status/5tk7cwgldmsd5r8n?svg=true)](https://ci.appveyor.com/project/vladimiry/pubsub-to-rpc-api)
 
 ## Getting started
 
@@ -16,7 +16,7 @@ Let's first describe API methods and create service instance ([shared/index.ts](
 // but only API definition and service instance creating
 // as this file is supposed to be shared between provider and client implementations
 
-import {ActionReturnType, ScanService, createService} from "pubsub-to-stream-api";
+import {ActionReturnType, ScanService, createService} from "pubsub-to-rpc-api";
 
 export const API_SERVICE = createService({
     // channel used to communicate between event emitters
