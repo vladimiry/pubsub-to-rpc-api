@@ -16,5 +16,5 @@ export function curryOwnFunctionMembers<T extends PM.Any>(src: T, ...args: PM.An
 }
 
 export function curryLogger(logger: M.Logger): typeof logger {
-    return curryOwnFunctionMembers(logger, [PM.MODULE_NAME_PREFIX]);
+    return curryOwnFunctionMembers(logger, PM.MODULE_NAME_PREFIX);
 }

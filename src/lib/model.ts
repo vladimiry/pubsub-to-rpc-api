@@ -1,3 +1,5 @@
+import {Observable} from "rxjs";
+
 import * as PM from "./private/model";
 import {createService} from "./index";
 
@@ -41,10 +43,24 @@ export interface ActionContext<Args extends PM.Any[] = PM.Any[]> {
     [PM.ACTION_CONTEXT_SYMBOL]: Readonly<{ args: Readonly<Args> }>;
 }
 
-export interface ScanServiceTypes<Instance extends ReturnType<typeof createService>,
+export interface ScanService<Instance extends ReturnType<typeof createService>,
     Api extends PM.Arguments<Instance["register"]>[0] = PM.Arguments<Instance["register"]>[0]> {
     Api: Api;
-    UnpackedApi: { [K in keyof Api]: Api[K] };
+    ApiSync: {
+        [K in keyof Api]: Api[K] extends (...args: infer A) => Observable<infer R> | Promise<infer R>
+            ? (...args: A) => R
+            : never
+    };
+    ApiArgs: {
+        [K in keyof Api]: Api[K] extends (...args: infer A) => Observable<infer R> | Promise<infer R>
+            ? A
+            : never
+    };
+    ApiReturns: {
+        [K in keyof Api]: Api[K] extends (...args: infer A) => Observable<infer R> | Promise<infer R>
+            ? R
+            : never
+    };
 }
 
 // tslint:disable-next-line:variable-name

@@ -1,10 +1,10 @@
 import * as Model from "./model";
-import {ActionReturnType, ScanServiceTypes} from "./model";
+import {ActionReturnType, ScanService} from "./model";
 
 export {
     Model,
     ActionReturnType,
-    ScanServiceTypes,
+    ScanService,
 };
 
 export * from "./service";

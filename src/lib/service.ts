@@ -8,28 +8,6 @@ import * as M from "./model";
 import * as PM from "./private/model";
 import {curryLogger} from "./private/util";
 
-export function createService<AD extends PM.ActionsDefinition<AD>>(
-    {
-        channel,
-        actionsDefinition,
-        callTimeoutMs = PM.ONE_SECOND_MS * 3,
-        logger: _logger_ = PM.LOG_STUB, // tslint:disable-line:variable-name
-    }: CreateServiceInput<AD>,
-): Readonly<CreateServiceReturn<AD>> {
-    const logger = curryLogger(_logger_);
-
-    logger.info("createService()");
-
-    const options: CreateServiceOptions<AD> = Object.freeze({channel, actionsDefinition, callTimeoutMs, logger});
-    const providerMethods = buildProviderMethods<AD>(options);
-    const clientMethods = buildClientMethods<AD>(options);
-
-    return Object.freeze({
-        ...providerMethods,
-        ...clientMethods,
-    });
-}
-
 interface CreateServiceReturn<AD extends PM.ActionsDefinition<AD>> {
     register: <A extends PM.Actions<AD>>(
         actions: A,
@@ -53,14 +31,36 @@ interface CreateServiceReturn<AD extends PM.ActionsDefinition<AD>> {
     ) => A[N];
 }
 
-interface CreateServiceInput<AD extends PM.ActionsDefinition<AD>> {
+type CreateServiceInput<AD extends PM.ActionsDefinition<AD>> = Readonly<{
     channel: string;
     actionsDefinition: AD;
     callTimeoutMs?: number;
     logger?: M.Logger;
-}
+}>;
 
 type CreateServiceOptions<AD extends PM.ActionsDefinition<AD>> = Readonly<Required<CreateServiceInput<AD>>>;
+
+export function createService<AD extends PM.ActionsDefinition<AD>>(
+    {
+        channel,
+        actionsDefinition,
+        callTimeoutMs = PM.ONE_SECOND_MS * 3,
+        logger: _logger_ = PM.LOG_STUB, // tslint:disable-line:variable-name
+    }: CreateServiceInput<AD>,
+): Readonly<CreateServiceReturn<AD>> {
+    const logger = curryLogger(_logger_);
+
+    logger.info("createService()");
+
+    const options: CreateServiceOptions<AD> = {channel, actionsDefinition, callTimeoutMs, logger} as const;
+    const providerMethods = buildProviderMethods<AD>(options);
+    const clientMethods = buildClientMethods<AD>(options);
+
+    return {
+        ...providerMethods,
+        ...clientMethods,
+    };
+}
 
 function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
     baseOptions: CreateServiceOptions<AD>,
@@ -99,7 +99,7 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
                     subscriptions.delete(uid);
 
                     logger.debug(`provider.unsubscribe: ${logData}`);
-                    logger.debug(`subscription removed: ${logData}`);
+                    logger.debug(`subscription removed: ${logData}, subscriptions count: ${subscriptions.size}`);
                 }
 
                 if (payload.type !== "request") {
@@ -132,7 +132,7 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
                             subscription.unsubscribe();
                             subscriptions.delete(uid);
 
-                            logger.debug(`subscription removed: ${logData}`);
+                            logger.debug(`subscription removed: ${logData}, subscriptions count: ${subscriptions.size}`);
                         }, 0);
                     };
                     const baseResponse: Readonly<Pick<PM.ResponsePayload<AD>, "uid" | "name" | "type">> = {type: "response", uid, name};
@@ -202,95 +202,102 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
 function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
     baseOptions: CreateServiceOptions<AD>,
 ): Pick<CreateServiceReturn<AD>, "call" | "caller"> {
-    // TODO provide size/stats getting method
-    const byListenerHandlersCache: WeakMap<M.Emitters["listener"], Map<string, ReturnType<typeof byCallUidHandlersMapBuild>>>
-        = new WeakMap();
+    const emitChannel = baseOptions.channel;
 
     const call: ReturnType<typeof createService>["call"] = (
         name,
-        options,
+        {
+            timeoutMs,
+            finishPromise,
+            listenChannel = emitChannel,
+            notificationWrapper: runNotification = PM.DEFAULT_NOTIFICATION_WRAPPER,
+            serialization,
+        },
         emitters,
     ) => {
         type Action = PM.Actions<AD>[keyof PM.Actions<AD>]; // TODO TS: use "PM.Actions<AD>[typeof name]"
         type ActionOutput = PM.Unpacked<ReturnType<Action>>;
 
-        const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
-        const emitChannel = baseOptions.channel;
-        const listeningChannel = options.listenChannel || emitChannel;
-        const runNotification = options.notificationWrapper || PM.DEFAULT_NOTIFICATION_WRAPPER;
-
-        ensureChannelListening(listener, listeningChannel);
-
         return ((...args: PM.Arguments<Action>) => {
-            const request: PM.RequestPayload<AD> = {
-                uid: uuid.v4(),
-                type: "request",
-                serialization: options.serialization,
-                name: name as unknown as keyof PM.Actions<AD>, // TODO TS: get rid of typecasting
-                args,
-            };
             const observable$: Observable<ActionOutput> = new Observable((observer: Subscriber<ActionOutput>) => {
-                const byChannelHandlersMap = byListenerHandlersCache.get(listener);
-                const byCallUidHandlersMap = byChannelHandlersMap && byChannelHandlersMap.get(listeningChannel);
-
-                if (!byCallUidHandlersMap) { // not supposed to be undefined at this state
-                    runNotification(() => observer.error(new Error(`Failed to resolve "${emitChannel}" channel's calls map`)));
-                    return;
-                }
-
+                const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
+                const request: Readonly<PM.RequestPayload<AD>> = {
+                    uid: uuid.v4(),
+                    type: "request",
+                    serialization,
+                    name: name as unknown as keyof PM.Actions<AD>, // TODO TS: get rid of typecasting
+                    args,
+                };
                 const timeoutId = setTimeout(
                     () => {
-                        releaseTimeout();
-                        runNotification(() => observer.error(new Error(
-                            `Invocation timeout of "${name}" method on "${emitChannel}" channel with ${options.timeoutMs}ms timeout`,
-                        )));
-                        // sending forced unsubscribe signal to api provider
-                        emitter.emit(emitChannel, {uid: request.uid, type: "unsubscribe"});
+                        signals.error(
+                            serializerr(
+                                new Error(
+                                    `Invocation timeout of "${name}" method on "${emitChannel}" channel with ${timeoutMs}ms timeout`,
+                                ),
+                            ),
+                        );
+                        emitter.emit(emitChannel, {uid: request.uid, type: "unsubscribe"}); // send unsubscribe signal to api provider
                     },
-                    options.timeoutMs,
+                    timeoutMs,
                 );
                 const releaseTimeout = () => {
                     clearTimeout(timeoutId);
                 };
-                const error = (e: Error) => {
+                const release = () => {
                     releaseTimeout();
-                    runNotification(() => observer.error(deserializeError(e)));
+                    listener.off(...listenerArgs);
                 };
-                const complete = () => {
-                    releaseTimeout();
-                    runNotification(() => observer.complete());
-                };
+                const signals = {
+                    error(e: ReturnType<typeof serializerr>) {
+                        release();
+                        runNotification(() => observer.error(deserializeError(e)));
+                    },
+                    next(data: ActionOutput) {
+                        releaseTimeout();
+                        runNotification(() => {
+                            observer.next(
+                                serialization === "jsan"
+                                    ? jsan.parse(data as unknown as string)
+                                    : data,
+                            );
+                        });
+                    },
+                    complete() {
+                        release();
+                        runNotification(() => observer.complete());
+                    },
+                } as const;
+                const listenerArgs: Readonly<PM.Arguments<typeof listener.on & typeof listener.off>> = [
+                    listenChannel,
+                    (payload: PM.Payload<AD>) => {
+                        if (payload.type !== "response" || payload.uid !== request.uid) {
+                            return;
+                        }
+                        if ("error" in payload) {
+                            signals.error(deserializeError(payload.error));
+                            return;
+                        }
+                        if ("data" in payload) {
+                            signals.next(payload.data);
+                        }
+                        if ("complete" in payload && payload.complete) {
+                            signals.complete();
+                        }
+                    },
+                ];
 
-                if (options.finishPromise) {
-                    options.finishPromise
+                if (finishPromise) {
+                    finishPromise
                         .then(() => {
-                            complete();
-                            // sending forced unsubscribe signal to api provider
-                            emitter.emit(emitChannel, {uid: request.uid, type: "unsubscribe"});
+                            signals.complete();
+                            emitter.emit(emitChannel, {uid: request.uid, type: "unsubscribe"}); // send unsubscribe signal to api provider
                         })
-                        .catch(error);
+                        .catch(signals.error);
                 }
 
-                // register call handler
-                byCallUidHandlersMap.set(
-                    request.uid,
-                    {
-                        error,
-                        complete,
-                        next(data: ActionOutput) {
-                            releaseTimeout();
-                            runNotification(() => {
-                                observer.next(
-                                    options.serialization === "jsan"
-                                        ? jsan.parse(data as unknown as string)
-                                        : data,
-                                );
-                            });
-                        },
-                    },
-                );
+                listener.on(...listenerArgs);
 
-                // execute the call
                 emitter.emit(emitChannel, request);
             });
 
@@ -304,14 +311,14 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
     };
 
     const caller: ReturnType<typeof createService>["caller"] = (
-        emiters,
+        emitters,
         defaultOptions = {timeoutMs: baseOptions.callTimeoutMs},
     ) => {
         const emittersLessFn = (name: keyof PM.Actions<AD>, options: M.CallOptions = defaultOptions) => {
             return call(
                 name,
                 {...defaultOptions, ...options},
-                emiters,
+                emitters,
             );
         };
         return emittersLessFn as PM.Any; // TODO TS: get rid of typecasting
@@ -321,58 +328,4 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
         call,
         caller,
     };
-
-    function ensureChannelListening<A extends PM.Actions<AD>, N extends keyof A>(
-        listener: M.Emitters["listener"],
-        channel: string,
-    ) {
-        const perChannelCallHandlersCached = (() => {
-            const byChannelHandlersMap = byListenerHandlersCache.get(listener);
-            return Boolean(byChannelHandlersMap && byChannelHandlersMap.has(channel));
-        })();
-
-        if (perChannelCallHandlersCached) {
-            return;
-        }
-
-        // TODO provide size/stats getting method
-        const byCallUidHandlersMap = byCallUidHandlersMapBuild();
-
-        // register single handler per call channel
-        listener.on( // TODO implement unsubscribe
-            channel,
-            (payload: PM.Payload<AD>) => {
-                const handler = byCallUidHandlersMap.get(payload.uid);
-
-                if (!handler || payload.type !== "response") {
-                    return;
-                }
-                if ("error" in payload) {
-                    handler.error(deserializeError(payload.error));
-                    byCallUidHandlersMap.delete(payload.uid);
-                    return;
-                }
-                if ("data" in payload) {
-                    handler.next(payload.data);
-                }
-                if ("complete" in payload && payload.complete) {
-                    handler.complete();
-                    byCallUidHandlersMap.delete(payload.uid);
-                }
-            },
-        );
-
-        // cache per-channel call handlers
-        byListenerHandlersCache.set(
-            listener,
-            new Map([
-                [channel, byCallUidHandlersMap],
-            ]),
-        );
-    }
-
-    function byCallUidHandlersMapBuild<A extends PM.Actions<AD>>()
-        : Map<PM.PayloadUid, Pick<Subscriber<PM.Unpacked<ReturnType<A[keyof A]>>>, "next" | "complete" | "error">> {
-        return new Map();
-    }
 }

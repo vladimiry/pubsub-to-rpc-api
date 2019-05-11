@@ -39,6 +39,11 @@
       "tsconfig-paths/register"
     ]
   },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
   "peerDependencies": {
     "rxjs": "^6.5.2"
   },
