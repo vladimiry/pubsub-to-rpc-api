@@ -8,53 +8,21 @@ import * as M from "./model";
 import * as PM from "./private/model";
 import {curryLogger} from "./private/util";
 
-interface CreateServiceReturn<AD extends PM.ActionsDefinition<AD>> {
-    register: <A extends PM.Actions<AD>>(
-        actions: A,
-        combinerEventEmitter: M.CombinedEventEmitter,
-        options?: { requestResolver?: M.RequestResolver; logger?: M.Logger; },
-    ) => {
-        deregister: () => void;
-        resourcesStat: () => { subscriptionsCount: number; }
-    };
-    call: <A extends PM.Actions<AD>, N extends keyof A>(
-        name: N,
-        options: M.CallOptions,
-        emitters: M.Emitters | M.EmittersResolver,
-    ) => A[N];
-    caller: (
-        emiters: M.Emitters | M.EmittersResolver,
-        defaultOptions?: M.CallOptions,
-    ) => <A extends PM.Actions<AD>, N extends keyof A>(
-        name: N,
-        options?: M.CallOptions,
-    ) => A[N];
-}
-
-type CreateServiceInput<AD extends PM.ActionsDefinition<AD>> = Readonly<{
-    channel: string;
-    actionsDefinition: AD;
-    callTimeoutMs?: number;
-    logger?: M.Logger;
-}>;
-
-type CreateServiceOptions<AD extends PM.ActionsDefinition<AD>> = Readonly<Required<CreateServiceInput<AD>>>;
-
-export function createService<AD extends PM.ActionsDefinition<AD>>(
+export function createService<AD extends M.ApiDefinition<AD>>(
     {
         channel,
-        actionsDefinition,
+        apiDefinition,
         callTimeoutMs = PM.ONE_SECOND_MS * 3,
         logger: _logger_ = PM.LOG_STUB, // tslint:disable-line:variable-name
-    }: CreateServiceInput<AD>,
-): Readonly<CreateServiceReturn<AD>> {
+    }: M.CreateServiceInput<AD>,
+): M.CreateServiceReturn<AD> {
     const logger = curryLogger(_logger_);
 
     logger.info("createService()");
 
-    const options: CreateServiceOptions<AD> = {channel, actionsDefinition, callTimeoutMs, logger} as const;
-    const providerMethods = buildProviderMethods<AD>(options);
-    const clientMethods = buildClientMethods<AD>(options);
+    const serviceOptions: M.CreateServiceOptions<AD> = {channel, apiDefinition, callTimeoutMs, logger};
+    const providerMethods = buildProviderMethods<AD>(serviceOptions);
+    const clientMethods = buildClientMethods<AD>(serviceOptions);
 
     return {
         ...providerMethods,
@@ -62,29 +30,36 @@ export function createService<AD extends PM.ActionsDefinition<AD>>(
     };
 }
 
-function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
-    baseOptions: CreateServiceOptions<AD>,
-): Pick<CreateServiceReturn<AD>, "register"> {
-    const register: ReturnType<typeof createService>["register"] = (
+function buildProviderMethods<AD extends M.ApiDefinition<AD>>(
+    serviceOptions: M.CreateServiceOptions<AD>,
+): Pick<M.CreateServiceReturn<AD>, "register"> {
+    const register: ReturnType<typeof buildProviderMethods>["register"] = (
         actions,
-        combinerEventEmitter,
+        eventEmitter,
         options = {},
     ) => {
-        const {requestResolver} = options;
+        const {
+            onEventResolver = ((...listenerArgs) => {
+                return {
+                    payload: listenerArgs[PM.ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX],
+                    emitter: eventEmitter,
+                };
+            }) as M.ProviderOnEventResolver,
+        } = options;
         const logger = options.logger
             ? curryLogger(options.logger)
-            : baseOptions.logger;
+            : serviceOptions.logger;
 
         logger.info(`register()`);
 
         const subscriptions: Map<PM.PayloadUid, Pick<Subscription, "unsubscribe">> = new Map();
-        const emOnOffHandlerArgs: PM.Arguments<typeof combinerEventEmitter.on> = [
-            baseOptions.channel,
-            (...args) => {
-                const resolvedArgs = requestResolver && requestResolver(...args) || false;
-                const {payload}: { payload: PM.Payload<AD> } = resolvedArgs || {payload: args[0]};
+        const listenerSubscriptionArgs: PM.Arguments<typeof eventEmitter.on> = [
+            serviceOptions.channel,
+            (...listenerArgs) => {
+                const resolvedArgs = onEventResolver(...listenerArgs);
+                const {payload} = resolvedArgs;
                 const {name, uid} = payload;
-                const logData = JSON.stringify({channel: baseOptions.channel, name, type: payload.type, uid});
+                const logData = JSON.stringify({channel: serviceOptions.channel, name, type: payload.type, uid});
 
                 // unsubscribe forced on the client side, normally occurring on "finishPromise" resolving
                 if (payload.type === "unsubscribe") {
@@ -106,7 +81,7 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
                     return;
                 }
 
-                const ctx: M.ActionContext<typeof args> = {[PM.ACTION_CONTEXT_SYMBOL]: {args}};
+                const ctx: M.ActionContext<typeof listenerArgs> = {[M.ACTION_CONTEXT_SYMBOL]: {args: listenerArgs}};
                 const action = actions[name];
 
                 // TODO TS: get rid of typecasting
@@ -115,8 +90,8 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
 
                 const handlers = (() => {
                     const emit = (() => {
-                        const {emitter} = resolvedArgs || {emitter: combinerEventEmitter};
-                        return (data: PM.ResponsePayload<AD>) => emitter.emit(baseOptions.channel, data);
+                        const {emitter} = resolvedArgs || {emitter: eventEmitter};
+                        return (data: PM.ResponsePayload<AD>) => emitter.emit(serviceOptions.channel, data);
                     })();
                     const unsubscribe = () => {
                         logger.debug(`triggered unsubscribing: ${logData}`);
@@ -177,13 +152,13 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
             },
         ];
 
-        combinerEventEmitter.on(...emOnOffHandlerArgs);
+        eventEmitter.on(...listenerSubscriptionArgs);
 
         logger.info(`registered: ${JSON.stringify({actionsKeys: Object.keys(actions)})}`);
 
         return {
             deregister() {
-                combinerEventEmitter.removeListener(...emOnOffHandlerArgs);
+                eventEmitter.removeListener(...listenerSubscriptionArgs);
                 subscriptions.forEach((subscription) => subscription.unsubscribe());
                 subscriptions.clear();
                 logger.info(`"unregister" called`);
@@ -199,12 +174,18 @@ function buildProviderMethods<AD extends PM.ActionsDefinition<AD>>(
     };
 }
 
-function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
-    baseOptions: CreateServiceOptions<AD>,
-): Pick<CreateServiceReturn<AD>, "call" | "caller"> {
-    const emitChannel = baseOptions.channel;
+function buildClientMethods<AD extends M.ApiDefinition<AD>>(
+    serviceOptions: M.CreateServiceOptions<AD>,
+): Pick<M.CreateServiceReturn<AD>, "call" | "caller"> {
+    const emitChannel = serviceOptions.channel;
 
-    const call: ReturnType<typeof createService>["call"] = (
+    const onEventResolverDefault: M.ClientOnEventResolver = (...listenerArgs) => {
+        return {
+            payload: listenerArgs[PM.ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX],
+        };
+    };
+
+    const call: ReturnType<typeof buildClientMethods>["call"] = (
         name,
         {
             timeoutMs,
@@ -212,21 +193,22 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
             listenChannel = emitChannel,
             notificationWrapper: runNotification = PM.DEFAULT_NOTIFICATION_WRAPPER,
             serialization,
+            onEventResolver = onEventResolverDefault,
         },
         emitters,
     ) => {
-        type Action = PM.Actions<AD>[keyof PM.Actions<AD>]; // TODO TS: use "PM.Actions<AD>[typeof name]"
+        type Action = M.Actions<AD>[keyof M.Actions<AD>]; // TODO TS: use "M.Actions<AD>[typeof name]"
         type ActionOutput = PM.Unpacked<ReturnType<Action>>;
 
-        return ((...args: PM.Arguments<Action>) => {
+        return ((...actionArgs: PM.Arguments<Action>) => {
             const observable$: Observable<ActionOutput> = new Observable((observer: Subscriber<ActionOutput>) => {
                 const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
                 const request: Readonly<PM.RequestPayload<AD>> = {
                     uid: uuid.v4(),
                     type: "request",
                     serialization,
-                    name: name as unknown as keyof PM.Actions<AD>, // TODO TS: get rid of typecasting
-                    args,
+                    name: name as unknown as keyof M.Actions<AD>, // TODO TS: get rid of typecasting
+                    args: actionArgs,
                 };
                 const timeoutId = setTimeout(
                     () => {
@@ -246,7 +228,7 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
                 };
                 const release = () => {
                     releaseTimeout();
-                    listener.removeListener(...listenerArgs);
+                    listener.removeListener(...listenerSubscriptionArgs);
                 };
                 const signals = {
                     error(e: ReturnType<typeof serializerr>) {
@@ -268,9 +250,11 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
                         runNotification(() => observer.complete());
                     },
                 } as const;
-                const listenerArgs: Readonly<PM.Arguments<typeof listener.on & typeof listener.removeListener>> = [
+                const listenerSubscriptionArgs: Readonly<PM.Arguments<typeof listener.on & typeof listener.removeListener>> = [
                     listenChannel,
-                    (payload: PM.Payload<AD>) => {
+                    (...listenerArgs) => {
+                        const {payload} = onEventResolver(...listenerArgs);
+
                         if (payload.type !== "response" || payload.uid !== request.uid) {
                             return;
                         }
@@ -296,13 +280,17 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
                         .catch(signals.error);
                 }
 
-                listener.on(...listenerArgs);
+                // TODO consider enabling internal listeners Map-based cache
+                listener.on(...listenerSubscriptionArgs);
 
                 emitter.emit(emitChannel, request);
             });
 
             // TODO TS: get rid of typecasting
-            if (baseOptions.actionsDefinition[name as unknown as keyof PM.Actions<AD>]().type === "promise") {
+            // TODO TS: value should be automatically inferred as "promise" | "observable"
+            const apiActionType = serviceOptions.apiDefinition[name as unknown as keyof M.Actions<AD>];
+
+            if (apiActionType === "promise") {
                 return observable$.toPromise();
             }
 
@@ -310,18 +298,18 @@ function buildClientMethods<AD extends PM.ActionsDefinition<AD>>(
         }) as PM.Any; // TODO TS: get rid of typecasting
     };
 
-    const caller: ReturnType<typeof createService>["caller"] = (
+    const caller: ReturnType<typeof buildClientMethods>["caller"] = (
         emitters,
-        defaultOptions = {timeoutMs: baseOptions.callTimeoutMs},
+        defaultOptions = {timeoutMs: serviceOptions.callTimeoutMs},
     ) => {
-        const emittersLessFn = (name: keyof PM.Actions<AD>, options: M.CallOptions = defaultOptions) => {
+        const emittersLessCall = (name: keyof M.Actions<AD>, options: M.CallOptions = defaultOptions) => {
             return call(
                 name,
                 {...defaultOptions, ...options},
                 emitters,
             );
         };
-        return emittersLessFn as PM.Any; // TODO TS: get rid of typecasting
+        return emittersLessCall as PM.Any; // TODO TS: get rid of typecasting
     };
 
     return {

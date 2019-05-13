@@ -14,8 +14,9 @@ export const API: Api = {
             .map(async (entry) => {
                 const ping = await promisify(tcpPing.ping)(entry);
                 const baseResponse = {domain: ping.address};
+                const failed = typeof ping.avg === "undefined" || isNaN(ping.avg);
 
-                return typeof ping.avg === "undefined" || isNaN(ping.avg)
+                return failed
                     ? {...baseResponse, error: JSON.stringify(ping)}
                     : {...baseResponse, time: ping.avg};
             })
@@ -30,8 +31,8 @@ API_SERVICE.register(
     // if not defined, then "EM_PROVIDER" would be used for listening and emitting
     // but normally listening and emitting happens on different instances, so specifying separate emitting instance as 3rd parameter
     {
-        requestResolver: (payload) => ({payload, emitter: EM_CLIENT}),
+        onEventResolver: (payload) => ({payload, emitter: EM_CLIENT}),
         // in a more real world scenario you would extract emitter from the payload, see Electron.js example:
-        // requestResolver: ({sender}, payload) => ({payload, emitter: {emit: sender.send.bind(sender)}}),
+        // onEventResolver: ({sender}, payload) => ({payload, emitter: {emit: sender.send.bind(sender)}}),
     },
 );

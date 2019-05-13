@@ -3,7 +3,7 @@ import {bufferCount} from "rxjs/operators";
 
 import {API} from ".";
 
-const apiActionsTestBundle: Record<keyof typeof API, (t: ExecutionContext) => ImplementationResult> = {
+const apiActionTests: Record<keyof typeof API, (t: ExecutionContext) => ImplementationResult> = {
     evaluateMathExpression: async (t) => {
         t.is(25, await API.evaluateMathExpression("12 * 2 + 1"));
     },
@@ -35,8 +35,6 @@ const apiActionsTestBundle: Record<keyof typeof API, (t: ExecutionContext) => Im
     },
 };
 
-Object
-    .entries(apiActionsTestBundle)
-    .forEach(([apiMethodName, testFn]) => {
-        test(`API: ${apiMethodName}`, testFn);
-    });
+for (const [apiMethodName, apiMethodTest] of Object.entries(apiActionTests)) {
+    test(`API: ${apiMethodName}`, apiMethodTest);
+}

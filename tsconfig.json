@@ -27,8 +27,5 @@
       "./node_modules/@types",
       "./@types"
     ]
-  },
-  "files": [
-    "./src/lib/index.ts"
-  ]
+  }
 }

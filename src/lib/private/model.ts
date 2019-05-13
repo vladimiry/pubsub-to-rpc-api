@@ -4,21 +4,9 @@ import * as M from "../model";
 
 export type Any = any; // tslint:disable-line:no-any
 
-export type ActionsDefinition<T> = {
-    [K in keyof T]: <R extends Any>(...args: Any[]) => ReturnTypeWrapper<"promise" | "observable", R>
-};
-
-export type Actions<T> = {
-    [K in Extract<keyof T, string>]: T[K] extends (...args: infer A) => ReturnTypeWrapper<infer RT, infer R>
-        ? (RT extends "promise" ? (/*this: M.ActionContext,*/ ...args: A) => Promise<R> :
-            RT extends "observable" ? (/*this: M.ActionContext,*/ ...args: A) => Observable<R> :
-                never)
-        : never;
-};
-
 export type PayloadUid = string;
 
-export type RequestPayload<AD extends ActionsDefinition<AD>, A extends Actions<AD> = Actions<AD>> =
+export type RequestPayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<AD> = M.Actions<AD>> =
     |
     ({
         type: "request";
@@ -33,7 +21,7 @@ export type RequestPayload<AD extends ActionsDefinition<AD>, A extends Actions<A
         name: keyof A;
     };
 
-export type ResponsePayload<AD extends ActionsDefinition<AD>, A extends Actions<AD> = Actions<AD>> =
+export type ResponsePayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<AD> = M.Actions<AD>> =
     {
         type: "response";
         uid: PayloadUid;
@@ -44,11 +32,7 @@ export type ResponsePayload<AD extends ActionsDefinition<AD>, A extends Actions<
     | { error: Any }
     );
 
-export type Payload<AD extends ActionsDefinition<AD>> = RequestPayload<AD> | ResponsePayload<AD>;
-
-export class ReturnTypeWrapper<T extends "promise" | "observable", R> {
-    constructor(public readonly type: T) {}
-}
+export type Payload<AD extends M.ApiDefinition<AD>> = RequestPayload<AD> | ResponsePayload<AD>;
 
 export type Arguments<F extends (...x: Any[]) => Any> =
     F extends (...args: infer A) => Any ? A : never;
@@ -64,8 +48,6 @@ export const MODULE_NAME_PREFIX = "[pubsub-to-rpc-api]";
 
 export const ONE_SECOND_MS = 1000;
 
-export const ACTION_CONTEXT_SYMBOL = Symbol(`${MODULE_NAME_PREFIX}:ACTION_CONTEXT_SYMBOL`);
-
 export const EMPTY_FN: M.LoggerFn = () => {}; // tslint:disable-line:no-empty
 
 export const LOG_STUB: Record<keyof M.Logger, M.LoggerFn> = Object.freeze({
@@ -77,3 +59,10 @@ export const LOG_STUB: Record<keyof M.Logger, M.LoggerFn> = Object.freeze({
 });
 
 export const DEFAULT_NOTIFICATION_WRAPPER: Required<M.CallOptions>["notificationWrapper"] = (fn) => fn();
+
+// NodeJS.EventEmitter.on listener function doesn't get "event" as the first argument but gets only payload args
+// so we go the similar way expecting by default that payload is the first argument as we need only payload
+// if payload is not the first argument for used event emitter
+// then "onEventResolver" should be defined, like Electron.js case: "event" is the first argument and data args go next
+// WARN: changing this constant would be a breaking change: will force change of all custom "onEventResolver" functions
+export const ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX = 0;

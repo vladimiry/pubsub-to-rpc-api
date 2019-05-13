@@ -8,7 +8,7 @@ Is a Node.js / browser library that converts _publish-subscribe / IPC_ - like in
 
 Your project needs `rxjs@6` to be installed, which is a peer dependency of this module.
 
-Related source code is located [here](src/example/readme), can be executed by running `yarn example` console command.
+Example-related source code is located [here](src/example/readme), can be executed by running `yarn example` console command.
 
 Let's first describe API methods and create service instance ([shared/index.ts](src/example/readme/shared/index.ts)):
 ```typescript
@@ -16,27 +16,28 @@ Let's first describe API methods and create service instance ([shared/index.ts](
 // but only API definition and service instance creating
 // as this file is supposed to be shared between provider and client implementations
 
-import {ActionReturnType, ScanService, createService} from "pubsub-to-rpc-api";
+import {ActionType, createService, ScanApiDefinition} from "lib";
+
+const apiDefinition = {
+    evaluateMathExpression: ActionType.Promise<[string], number>(),
+    httpPing: ActionType.Observable<Array<{
+        address?: string;
+        port?: number;
+        attempts?: number;
+        timeout?: number;
+    }>, { domain: string } & ({ time: number } | { error: string })>(),
+};
 
 export const API_SERVICE = createService({
-    // channel used to communicate between event emitters
-    channel: "some-event-name",
-
-    // api definition
-    actionsDefinition: {
-        evaluateMathExpression: (expression: string) => ActionReturnType.Promise<number>(),
-        httpPing: (
-            ...args: Array<{
-                address?: string;
-                port?: number;
-                attempts?: number;
-                timeout?: number;
-            }>
-        ) => ActionReturnType.Observable<{ domain: string } & ({ time: number } | { error: string })>(),
-    },
+    channel: "some-event-name", // event name used to communicate between event emitters
+    apiDefinition,
 });
 
-export type Api = ScanService<typeof API_SERVICE>["Api"];
+// optionally exposing inferred API structure
+export type Api = ScanApiDefinition<typeof apiDefinition>["Api"];
+
+// alternatively the service instance can also be scanned
+// export type Api =  ScanService<typeof API_SERVICE>["Api"]
 ```
 
 `ActionReturnType.Promise` and `ActionReturnType.Observable` return values used to preserve action result type in runtime so the client-side code is able to distinguish return types not knowing anything about the actual API implementation at the provider-side.
@@ -48,7 +49,7 @@ import {evaluate} from "maths.ts";
 import {from, merge} from "rxjs";
 import {promisify} from "util";
 
-import {API_SERVICE, Api} from "../shared";
+import {Api, API_SERVICE} from "../shared";
 import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
 // API implementation
@@ -59,8 +60,9 @@ export const API: Api = {
             .map(async (entry) => {
                 const ping = await promisify(tcpPing.ping)(entry);
                 const baseResponse = {domain: ping.address};
+                const failed = typeof ping.avg === "undefined" || isNaN(ping.avg);
 
-                return typeof ping.avg === "undefined" || isNaN(ping.avg)
+                return failed
                     ? {...baseResponse, error: JSON.stringify(ping)}
                     : {...baseResponse, time: ping.avg};
             })
@@ -75,9 +77,9 @@ API_SERVICE.register(
     // if not defined, then "EM_PROVIDER" would be used for listening and emitting
     // but normally listening and emitting happens on different instances, so specifying separate emitting instance as 3rd parameter
     {
-        requestResolver: (payload) => ({payload, emitter: EM_CLIENT}),
+        onEventResolver: (payload) => ({payload, emitter: EM_CLIENT}),
         // in a more real world scenario you would extract emitter from the payload, see Electron.js example:
-        // requestResolver: ({sender}, payload) => ({payload, emitter: {emit: sender.send.bind(sender)}}),
+        // onEventResolver: ({sender}, payload) => ({payload, emitter: {emit: sender.send.bind(sender)}}),
     },
 );
 ```
@@ -108,7 +110,7 @@ import {bufferCount} from "rxjs/operators";
 
 import {API} from ".";
 
-const apiActionsTestBundle: Record<keyof typeof API, (t: ExecutionContext) => ImplementationResult> = {
+const apiActionTests: Record<keyof typeof API, (t: ExecutionContext) => ImplementationResult> = {
     evaluateMathExpression: async (t) => {
         t.is(25, await API.evaluateMathExpression("12 * 2 + 1"));
     },
@@ -140,9 +142,7 @@ const apiActionsTestBundle: Record<keyof typeof API, (t: ExecutionContext) => Im
     },
 };
 
-Object
-    .entries(apiActionsTestBundle)
-    .forEach(([apiMethodName, testFn]) => {
-        test(`API: ${apiMethodName}`, testFn);
-    });
+for (const [apiMethodName, apiMethodTest] of Object.entries(apiActionTests)) {
+    test(`API: ${apiMethodName}`, apiMethodTest);
+}
 ```
