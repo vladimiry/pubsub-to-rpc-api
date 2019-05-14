@@ -4,6 +4,16 @@ import * as M from "../model";
 
 export type Any = any; // tslint:disable-line:no-any
 
+export type Arguments<F extends (...x: Any[]) => Any> =
+    F extends (...args: infer A) => Any ? A : never;
+
+export type Unpacked<T> =
+    T extends Promise<infer U2> ? U2 :
+        T extends Observable<infer U3> ? U3 :
+            T;
+
+export type NeverIfEmpty<T> = keyof T extends never ? never : T;
+
 export type PayloadUid = string;
 
 export type RequestPayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<AD> = M.Actions<AD>> =
@@ -33,16 +43,6 @@ export type ResponsePayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<
     );
 
 export type Payload<AD extends M.ApiDefinition<AD>> = RequestPayload<AD> | ResponsePayload<AD>;
-
-export type Arguments<F extends (...x: Any[]) => Any> =
-    F extends (...args: infer A) => Any ? A : never;
-
-export type Unpacked<T> =
-    T extends Promise<infer U2> ? U2 :
-        T extends Observable<infer U3> ? U3 :
-            T;
-
-export type NeverIfEmpty<T> = keyof T extends never ? never : T;
 
 export const MODULE_NAME_PREFIX = "[pubsub-to-rpc-api]";
 

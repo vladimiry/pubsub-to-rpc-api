@@ -11,5 +11,5 @@ evaluateMathExpressionMethod("32 * 2")
     .then(console.log)
     .catch(console.error);
 
-httpPingMethod({address: "google.com", attempts: 1}, {address: "github.com"}, {address: "1.1.1.1"})
+httpPingMethod([{address: "google.com", attempts: 1}, {address: "github.com"}, {address: "1.1.1.1"}])
     .subscribe(console.log, console.error);

@@ -16,10 +16,10 @@ Let's first describe API methods and create service instance ([shared/index.ts](
 // but only API definition and service instance creating
 // as this file is supposed to be shared between provider and client implementations
 
-import {ActionType, createService, ScanApiDefinition} from "lib";
+import {ActionType, ScanService, createService} from "lib";
 
 const apiDefinition = {
-    evaluateMathExpression: ActionType.Promise<[string], number>(),
+    evaluateMathExpression: ActionType.Promise<string, number>(),
     httpPing: ActionType.Observable<Array<{
         address?: string;
         port?: number;
@@ -29,15 +29,13 @@ const apiDefinition = {
 };
 
 export const API_SERVICE = createService({
-    channel: "some-event-name", // event name used to communicate between event emitters
+    channel: "some-event-name", // event name used to communicate between the event emitters
     apiDefinition,
 });
 
 // optionally exposing inferred API structure
-export type Api = ScanApiDefinition<typeof apiDefinition>["Api"];
-
-// alternatively the service instance can also be scanned
-// export type Api =  ScanService<typeof API_SERVICE>["Api"]
+type ScannedService = ScanService<typeof API_SERVICE>;
+export type Api = ScannedService["Api"];
 ```
 
 `ActionReturnType.Promise` and `ActionReturnType.Observable` return values used to preserve action result type in runtime so the client-side code is able to distinguish return types not knowing anything about the actual API implementation at the provider-side.
@@ -49,25 +47,27 @@ import {evaluate} from "maths.ts";
 import {from, merge} from "rxjs";
 import {promisify} from "util";
 
-import {Api, API_SERVICE} from "../shared";
+import {API_SERVICE, Api} from "../shared";
 import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
 // API implementation
 export const API: Api = {
     evaluateMathExpression: async (input) => Number(String(evaluate(input))),
-    httpPing: (...entries) => merge(
-        ...entries
-            .map(async (entry) => {
-                const ping = await promisify(tcpPing.ping)(entry);
-                const baseResponse = {domain: ping.address};
-                const failed = typeof ping.avg === "undefined" || isNaN(ping.avg);
+    httpPing(entries) {
+        const promises = entries.map(async (entry) => {
+            const ping = await promisify(tcpPing.ping)(entry);
+            const baseResponse = {domain: ping.address};
+            const failed = typeof ping.avg === "undefined" || isNaN(ping.avg);
 
-                return failed
-                    ? {...baseResponse, error: JSON.stringify(ping)}
-                    : {...baseResponse, time: ping.avg};
-            })
-            .map((promise) => from(promise)),
-    ),
+            return failed
+                ? {...baseResponse, error: JSON.stringify(ping)}
+                : {...baseResponse, time: ping.avg};
+        });
+
+        return merge(
+            ...promises.map((promise) => from(promise)),
+        );
+    },
 };
 
 API_SERVICE.register(
@@ -99,7 +99,7 @@ evaluateMathExpressionMethod("32 * 2")
     .then(console.log)
     .catch(console.error);
 
-httpPingMethod({address: "google.com", attempts: 1}, {address: "github.com"}, {address: "1.1.1.1"})
+httpPingMethod([{address: "google.com", attempts: 1}, {address: "github.com"}, {address: "1.1.1.1"}])
     .subscribe(console.log, console.error);
 ```
 

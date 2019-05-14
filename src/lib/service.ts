@@ -8,14 +8,14 @@ import * as M from "./model";
 import * as PM from "./private/model";
 import {curryLogger} from "./private/util";
 
-export function createService<AD extends M.ApiDefinition<AD>>(
+export function createService<AD extends M.ApiDefinition<AD>, ACA extends PM.Any[] | void = void>(
     {
         channel,
         apiDefinition,
         callTimeoutMs = PM.ONE_SECOND_MS * 3,
         logger: _logger_ = PM.LOG_STUB, // tslint:disable-line:variable-name
     }: M.CreateServiceInput<AD>,
-): M.CreateServiceReturn<AD> {
+): M.CreateServiceReturn<AD, ACA> {
     const logger = curryLogger(_logger_);
 
     logger.info("createService()");
@@ -81,12 +81,12 @@ function buildProviderMethods<AD extends M.ApiDefinition<AD>>(
                     return;
                 }
 
-                const ctx: M.ActionContext<typeof listenerArgs> = {[M.ACTION_CONTEXT_SYMBOL]: {args: listenerArgs}};
                 const action = actions[name];
+                const actionCtx: M.ActionContext<typeof listenerArgs> = {args: listenerArgs};
 
                 // TODO TS: get rid of typecasting
                 type ActionOutput = Extract<PM.ResponsePayload<AD>, { data: PM.Any }>["data"];
-                const actionResult = (action as PM.Any).apply(ctx, payload.args) as Observable<ActionOutput> | Promise<ActionOutput>;
+                const actionResult = (action as PM.Any).apply(actionCtx, payload.args) as Observable<ActionOutput> | Promise<ActionOutput>;
 
                 const handlers = (() => {
                     const emit = (() => {

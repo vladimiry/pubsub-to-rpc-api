@@ -9,19 +9,21 @@ import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 // API implementation
 export const API: Api = {
     evaluateMathExpression: async (input) => Number(String(evaluate(input))),
-    httpPing: (...entries) => merge(
-        ...entries
-            .map(async (entry) => {
-                const ping = await promisify(tcpPing.ping)(entry);
-                const baseResponse = {domain: ping.address};
-                const failed = typeof ping.avg === "undefined" || isNaN(ping.avg);
+    httpPing(entries) {
+        const promises = entries.map(async (entry) => {
+            const ping = await promisify(tcpPing.ping)(entry);
+            const baseResponse = {domain: ping.address};
+            const failed = typeof ping.avg === "undefined" || isNaN(ping.avg);
 
-                return failed
-                    ? {...baseResponse, error: JSON.stringify(ping)}
-                    : {...baseResponse, time: ping.avg};
-            })
-            .map((promise) => from(promise)),
-    ),
+            return failed
+                ? {...baseResponse, error: JSON.stringify(ping)}
+                : {...baseResponse, time: ping.avg};
+        });
+
+        return merge(
+            ...promises.map((promise) => from(promise)),
+        );
+    },
 };
 
 API_SERVICE.register(

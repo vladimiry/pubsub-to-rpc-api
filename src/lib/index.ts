@@ -1,10 +1,9 @@
 import * as Model from "./model";
-import {ActionType, ScanApiDefinition, ScanService} from "./model";
+import {ActionType, ScanService} from "./model";
 
 export {
     ActionType,
     Model,
-    ScanApiDefinition,
     ScanService,
 };
 

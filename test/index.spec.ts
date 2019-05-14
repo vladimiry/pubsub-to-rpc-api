@@ -14,8 +14,8 @@ import {ActionType, createService} from "lib";
 
 test("calling 2 methods", async (t) => {
     const apiDefinition = {
-        method1: ActionType.Promise<[{ input1: string }], { output1: number }>(),
-        method2: ActionType.Observable<[number], { output2: number }>(),
+        method1: ActionType.Promise<{ input1: string }, { output1: number }>(),
+        method2: ActionType.Observable<number, { output2: number }>(),
     };
     const channel = randomStr();
     const service = createService({channel, apiDefinition});
@@ -84,7 +84,7 @@ test("backend error", async (t) => {
     const service = createService({
         channel: "channel-345",
         apiDefinition: {
-            method: ActionType.Observable<[string], number>(),
+            method: ActionType.Observable<string, number>(),
         },
     });
     const emitter = new EventEmitter();
@@ -114,8 +114,8 @@ test("timeout error", async (t) => {
     const service = createService({
         channel,
         apiDefinition: {
-            [methodObservable]: ActionType.Observable<[number], string>(),
-            [methodPromise]: ActionType.Promise<[number], string>(),
+            [methodObservable]: ActionType.Observable<number, string>(),
+            [methodPromise]: ActionType.Promise<number, string>(),
         },
     });
     const client = service.caller({emitter, listener: emitter}, {timeoutMs});
@@ -167,9 +167,9 @@ test("calling method without arguments", async (t) => {
         channel,
         sinon.match(
             (request: PM.RequestPayload<typeof apiDefinition>) => {
-                return request.type === "request" && request.args.length === 0;
+                return request.type === "request" && !request.args.length;
             },
-            "request should have empty \"args\" array",
+            `request should have empty "args" array`,
         ),
     ));
 });
@@ -198,7 +198,7 @@ test("preserve references", async (t) => {
     }
 
     const apiDefinition = {
-        method: ActionType.Observable<[boolean], Output>(),
+        method: ActionType.Observable<boolean, Output>(),
     };
     const channel = randomStr();
     const service = createServiceMocked({channel, apiDefinition});

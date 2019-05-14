@@ -60,7 +60,7 @@
   "devDependencies": {
     "@email-securely-app/import-sort-style": "^0.1.0",
     "@types/bluebird": "^3.5.26",
-    "@types/node": "^12.0.0",
+    "@types/node": "^12.0.1",
     "@types/sinon": "^7.0.11",
     "@types/tcp-ping": "^0.1.0",
     "ava": "^1.4.1",
