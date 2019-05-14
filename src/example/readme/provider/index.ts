@@ -3,11 +3,10 @@ import {evaluate} from "maths.ts";
 import {from, merge} from "rxjs";
 import {promisify} from "util";
 
-import {API_SERVICE, Api} from "../shared";
+import {API_SERVICE, ScannedApiService} from "../shared";
 import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
-// API implementation
-export const API: Api = {
+export const API_IMPLEMENTATION: ScannedApiService["ApiImpl"] = {
     evaluateMathExpression: async (input) => Number(String(evaluate(input))),
     httpPing(entries) {
         const promises = entries.map(async (entry) => {
@@ -27,7 +26,7 @@ export const API: Api = {
 };
 
 API_SERVICE.register(
-    API,
+    API_IMPLEMENTATION,
     EM_PROVIDER,
     // 3-rd parameter is optional
     // if not defined, then "EM_PROVIDER" would be used for listening and emitting

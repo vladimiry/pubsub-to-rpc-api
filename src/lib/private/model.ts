@@ -14,6 +14,12 @@ export type Unpacked<T> =
 
 export type NeverIfEmpty<T> = keyof T extends never ? never : T;
 
+export type DropFunctionsContext<T> = {
+    [K in keyof T]: T[K] extends (this: infer THIS, ...args: infer A) => infer R
+        ? (this: void, ...args: A) => R
+        : never;
+};
+
 export type PayloadUid = string;
 
 export type RequestPayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<AD> = M.Actions<AD>> =

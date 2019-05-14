@@ -57,22 +57,18 @@ export interface Logger {
 }
 
 interface ScanResult<API> {
-    Api: API;
-    ApiSync: {
-        [K in keyof API]: API[K] extends (...args: infer IN) => Observable<infer OUT> | Promise<infer OUT>
-            ? (...args: IN) => OUT
-            : never
-    };
-    ApiArgs: {
+    ApiImpl: API;
+    ApiImplArgs: {
         [K in keyof API]: API[K] extends (...args: infer IN) => Observable<infer OUT> | Promise<infer OUT>
             ? IN
             : never
     };
-    ApiReturns: {
+    ApiImplReturns: {
         [K in keyof API]: API[K] extends (...args: infer IN) => Observable<infer OUT> | Promise<infer OUT>
             ? OUT
             : never
     };
+    ApiClient: PM.DropFunctionsContext<API>;
 }
 
 export type ScanService<I extends ({
@@ -135,7 +131,7 @@ export interface CreateServiceReturn<AD extends ApiDefinition<AD>, ACA extends D
         deregister: () => void;
         resourcesStat: () => { subscriptionsCount: number; }
     };
-    call: <A extends Actions<AD, ACA>, N extends keyof A>(
+    call: <A extends PM.DropFunctionsContext<Actions<AD, ACA>>, N extends keyof A>(
         name: N,
         options: CallOptions,
         emitters: Emitters | EmittersResolver,
@@ -143,7 +139,7 @@ export interface CreateServiceReturn<AD extends ApiDefinition<AD>, ACA extends D
     caller: (
         emiters: Emitters | EmittersResolver,
         defaultOptions?: CallOptions,
-    ) => <A extends Actions<AD, ACA>, N extends keyof A>(
+    ) => <A extends PM.DropFunctionsContext<Actions<AD, ACA>>, N extends keyof A>(
         name: N,
         options?: CallOptions,
     ) => A[N];

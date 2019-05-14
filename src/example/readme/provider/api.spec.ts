@@ -1,11 +1,11 @@
 import test, {ExecutionContext, ImplementationResult} from "ava";
 import {bufferCount} from "rxjs/operators";
 
-import {API} from ".";
+import {API_IMPLEMENTATION} from ".";
 
-const apiActionTests: Record<keyof typeof API, (t: ExecutionContext) => ImplementationResult> = {
+const apiActionTests: Record<keyof typeof API_IMPLEMENTATION, (t: ExecutionContext) => ImplementationResult> = {
     evaluateMathExpression: async (t) => {
-        t.is(25, await API.evaluateMathExpression("12 * 2 + 1"));
+        t.is(25, await API_IMPLEMENTATION.evaluateMathExpression("12 * 2 + 1"));
     },
     httpPing: async (t) => {
         const entries = [
@@ -14,7 +14,7 @@ const apiActionTests: Record<keyof typeof API, (t: ExecutionContext) => Implemen
             {address: "1.1.1.1"},
         ];
 
-        const results = await API
+        const results = await API_IMPLEMENTATION
             .httpPing(...entries)
             .pipe(bufferCount(entries.length))
             .toPromise();

@@ -20,5 +20,4 @@ export const API_SERVICE = createService({
 });
 
 // optionally exposing inferred API structure
-type ScannedService = ScanService<typeof API_SERVICE>;
-export type Api = ScannedService["Api"];
+export type ScannedApiService = ScanService<typeof API_SERVICE>;

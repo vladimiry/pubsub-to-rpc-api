@@ -34,8 +34,7 @@ export const API_SERVICE = createService({
 });
 
 // optionally exposing inferred API structure
-type ScannedService = ScanService<typeof API_SERVICE>;
-export type Api = ScannedService["Api"];
+export type ScannedApiService = ScanService<typeof API_SERVICE>;
 ```
 
 `ActionReturnType.Promise` and `ActionReturnType.Observable` return values used to preserve action result type in runtime so the client-side code is able to distinguish return types not knowing anything about the actual API implementation at the provider-side.
@@ -47,11 +46,10 @@ import {evaluate} from "maths.ts";
 import {from, merge} from "rxjs";
 import {promisify} from "util";
 
-import {API_SERVICE, Api} from "../shared";
+import {API_SERVICE, ScannedApiService} from "../shared";
 import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
-// API implementation
-export const API: Api = {
+export const API_IMPLEMENTATION: ScannedApiService["ApiImpl"] = {
     evaluateMathExpression: async (input) => Number(String(evaluate(input))),
     httpPing(entries) {
         const promises = entries.map(async (entry) => {
@@ -71,7 +69,7 @@ export const API: Api = {
 };
 
 API_SERVICE.register(
-    API,
+    API_IMPLEMENTATION,
     EM_PROVIDER,
     // 3-rd parameter is optional
     // if not defined, then "EM_PROVIDER" would be used for listening and emitting
@@ -91,9 +89,9 @@ Now we can call the defined and implemented methods in a type-safe way ([client/
 import {API_SERVICE} from "../shared";
 import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
-const index = API_SERVICE.caller({emitter: EM_PROVIDER, listener: EM_CLIENT});
-const evaluateMathExpressionMethod = index("evaluateMathExpression"/*, {timeoutMs: 600}*/);
-const httpPingMethod = index("httpPing"/*, {timeoutMs: 600}*/);
+const apiClient = API_SERVICE.caller({emitter: EM_PROVIDER, listener: EM_CLIENT});
+const evaluateMathExpressionMethod = apiClient("evaluateMathExpression"/*, {timeoutMs: 600}*/);
+const httpPingMethod = apiClient("httpPing"/*, {timeoutMs: 600}*/);
 
 evaluateMathExpressionMethod("32 * 2")
     .then(console.log)
@@ -108,11 +106,11 @@ And here is how API methods test structure might look (we leverage combination o
 import test, {ExecutionContext, ImplementationResult} from "ava";
 import {bufferCount} from "rxjs/operators";
 
-import {API} from ".";
+import {API_IMPLEMENTATION} from ".";
 
-const apiActionTests: Record<keyof typeof API, (t: ExecutionContext) => ImplementationResult> = {
+const apiActionTests: Record<keyof typeof API_IMPLEMENTATION, (t: ExecutionContext) => ImplementationResult> = {
     evaluateMathExpression: async (t) => {
-        t.is(25, await API.evaluateMathExpression("12 * 2 + 1"));
+        t.is(25, await API_IMPLEMENTATION.evaluateMathExpression("12 * 2 + 1"));
     },
     httpPing: async (t) => {
         const entries = [
@@ -121,7 +119,7 @@ const apiActionTests: Record<keyof typeof API, (t: ExecutionContext) => Implemen
             {address: "1.1.1.1"},
         ];
 
-        const results = await API
+        const results = await API_IMPLEMENTATION
             .httpPing(...entries)
             .pipe(bufferCount(entries.length))
             .toPromise();

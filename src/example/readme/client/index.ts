@@ -3,9 +3,9 @@
 import {API_SERVICE} from "../shared";
 import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";
 
-const index = API_SERVICE.caller({emitter: EM_PROVIDER, listener: EM_CLIENT});
-const evaluateMathExpressionMethod = index("evaluateMathExpression"/*, {timeoutMs: 600}*/);
-const httpPingMethod = index("httpPing"/*, {timeoutMs: 600}*/);
+const apiClient = API_SERVICE.caller({emitter: EM_PROVIDER, listener: EM_CLIENT});
+const evaluateMathExpressionMethod = apiClient("evaluateMathExpression"/*, {timeoutMs: 600}*/);
+const httpPingMethod = apiClient("httpPing"/*, {timeoutMs: 600}*/);
 
 evaluateMathExpressionMethod("32 * 2")
     .then(console.log)
