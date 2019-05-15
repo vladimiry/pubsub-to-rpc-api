@@ -1,8 +1,8 @@
 # pubsub-to-rpc-api
 
-Is a Node.js / browser library that converts _publish-subscribe / IPC_ - like interaction model into the _request/response_ model with _provider_ and _client_ parties involved. So it's like flattening _pub/sub_ interactions into the Observables or Promises. It comes with type safety out of the box, thanks to TypeScript.
+Is a Node.js / browser library that converts _publish-subscribe / IPC_ - like interaction model into the _request/response_ model with _provider_ and _client_ parties involved. So it's like flattening _pub/sub_ interactions into the Observables/Promises-based API. It comes with type safety out of the box, thanks to TypeScript.
 
-[![Build Status: Linux / MacOS](https://travis-ci.org/vladimiry/pubsub-to-rpc-api.svg?branch=master)](https://travis-ci.org/vladimiry/pubsub-to-rpc-api) [![Build status: Windows](https://ci.appveyor.com/api/projects/status/5tk7cwgldmsd5r8n?svg=true)](https://ci.appveyor.com/project/vladimiry/pubsub-to-rpc-api)
+[![Build Status](https://travis-ci.org/vladimiry/pubsub-to-rpc-api.svg?branch=master)](https://travis-ci.org/vladimiry/pubsub-to-rpc-api)
 
 ## Getting started
 
