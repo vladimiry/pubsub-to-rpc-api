@@ -4,6 +4,8 @@ import * as M from "../model";
 
 export type Any = any; // tslint:disable-line:no-any
 
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+
 export type Arguments<F extends (...x: Any[]) => Any> =
     F extends (...args: infer A) => Any ? A : never;
 
@@ -50,19 +52,22 @@ export type ResponsePayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<
 
 export type Payload<AD extends M.ApiDefinition<AD>> = RequestPayload<AD> | ResponsePayload<AD>;
 
-export const MODULE_NAME_PREFIX = "[pubsub-to-rpc-api]";
+export const MODULE_NAME = "pubsub-to-rpc-api";
 
 export const ONE_SECOND_MS = 1000;
 
 export const EMPTY_FN: M.LoggerFn = () => {}; // tslint:disable-line:no-empty
 
-export const LOG_STUB: Record<keyof M.Logger, M.LoggerFn> = Object.freeze({
+export type InternalLogger = M.Logger & { _private: true };
+
+export const LOG_STUB: Readonly<InternalLogger> = {
+    _private: true,
     error: EMPTY_FN,
     warn: EMPTY_FN,
     info: EMPTY_FN,
     verbose: EMPTY_FN,
     debug: EMPTY_FN,
-});
+};
 
 export const DEFAULT_NOTIFICATION_WRAPPER: Required<M.CallOptions>["notificationWrapper"] = (fn) => fn();
 

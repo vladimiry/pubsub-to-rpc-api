@@ -3,14 +3,17 @@ import sinon from "sinon";
 import test from "ava";
 import uuid from "uuid-browser";
 import {EventEmitter} from "events";
-import {delay, map, take} from "rxjs/operators";
+import {bufferCount, delay, map, take} from "rxjs/operators";
 import {from, interval, merge, of, throwError} from "rxjs";
 
 import * as PM from "lib/private/model";
 import {ActionType, createService} from "lib";
 
-// TODO test a whole emitter/listener.on/off/emit cycle of provider and client
-// TODO test multiple registered api sets on the single service
+// TODO extend test cases:
+//      - a whole emitter/listener.on/off/emit cycle of provider and client
+//      - multiple registered api sets on the single service
+//      - custom "onEventResolver"
+//      - etc
 
 test("calling 2 methods", async (t) => {
     const apiDefinition = {
@@ -132,16 +135,20 @@ test("timeout error", async (t) => {
     await Promise.all([
         await t.throwsAsync(
             client(methodObservable)(inputValue).toPromise(),
-            `Invocation timeout of "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
+            `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
         ),
         await t.throwsAsync(
             client(methodPromise)(inputValue),
-            `Invocation timeout of "${methodPromise}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
+            `Invocation timeout of calling "${methodPromise}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
         ),
     ]);
 
-    t.is(String(inputValue), await client(methodObservable, {timeoutMs: delayMs * 1.2})(inputValue).toPromise());
-    t.is(String(inputValue), await client(methodPromise, {timeoutMs: delayMs * 1.2})(inputValue));
+    const [res1, res2] = await Promise.all([
+        await client(methodObservable, {timeoutMs: delayMs * 1.2})(inputValue).toPromise(),
+        await client(methodPromise, {timeoutMs: delayMs * 1.2})(inputValue),
+    ]);
+    t.is(String(inputValue), res1);
+    t.is(String(inputValue), res2);
 });
 
 test("calling method without arguments", async (t) => {
@@ -172,6 +179,37 @@ test("calling method without arguments", async (t) => {
             `request should have empty "args" array`,
         ),
     ));
+});
+
+test("stream", async (t) => {
+    const channel = randomStr();
+    const service = createService({
+        channel,
+        apiDefinition: {
+            stream: ActionType.Observable<{ start: number, count: number, delayMs: number }, number>(),
+        },
+    });
+    const em = new EventEmitter();
+
+    service.register({
+            stream(input) {
+                return interval(input.delayMs).pipe(
+                    take(input.count),
+                    map((value) => input.start + value),
+                );
+            },
+        },
+        em,
+    );
+    const start = 10;
+    const count = 5;
+    const delayMs = 250;
+    const streamMethod = service.call("stream", {timeoutMs: delayMs * count * 1.3}, {listener: em, emitter: em});
+    const actual = await streamMethod({start, count, delayMs})
+        .pipe(bufferCount(count))
+        .toPromise();
+    const expected = new Array(count).fill(0).map((...[, i]) => start + i);
+    t.deepEqual(expected, actual);
 });
 
 test("preserve references", async (t) => {

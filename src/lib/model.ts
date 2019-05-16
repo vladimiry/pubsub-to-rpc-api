@@ -41,7 +41,7 @@ export interface CallOptions {
     timeoutMs: number;
     finishPromise?: Promise<PM.Any>;
     listenChannel?: string;
-    notificationWrapper?: (fn: (...args: PM.Any[]) => PM.Any) => PM.Any;
+    notificationWrapper?: <R extends PM.Any>(fn: (...args: PM.Any[]) => R) => R;
     serialization?: "jsan";
     onEventResolver?: ClientOnEventResolver;
 }
@@ -152,4 +152,5 @@ export interface CreateServiceInput<AD extends ApiDefinition<AD>> {
     logger?: Logger;
 }
 
-export type CreateServiceOptions<AD extends ApiDefinition<AD>> = Readonly<Required<CreateServiceInput<AD>>>;
+export type CreateServiceOptions<AD extends ApiDefinition<AD>> =
+    Readonly<PM.Omit<Required<CreateServiceInput<AD>>, "logger"> & { logger: PM.InternalLogger }>;
