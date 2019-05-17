@@ -25,7 +25,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
             timeoutMs,
             finishPromise,
             listenChannel = emitChannel,
-            notificationWrapper: runNotification = PM.DEFAULT_NOTIFICATION_WRAPPER,
+            notificationWrapper = PM.NOTIFICATION_WRAPPER_STUB,
             serialization,
             onEventResolver = onEventResolverDefault,
         },
@@ -47,7 +47,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
                 emitter.emit(emitChannel, {type: "unsubscribe", uid: request.uid});
                 logger.debug(`sent "unsubscribe" signal to provider, source: "${source}"`);
             };
-            const observableBundle = addEventListener(listener, listenChannel, {logger});
+            const observableBundle = addEventListener(listener, listenChannel, {logger, notificationWrapper});
             const result$: Observable<ActionOutput> = race(
                 timer(timeoutMs).pipe(
                     mergeMap(() => {
@@ -75,7 +75,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
                         if ("error" in payload) {
                             return throwError(deserializeError(payload.error));
                         }
-                        return [undefined]; // "payload.data" is "undefined" ("void" action response type)
+                        return [void 0]; // "payload.data" is "undefined" ("void" action response type)
                     }),
                 ),
             ).pipe(
@@ -90,7 +90,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
                 ),
                 finalize(() => {
                     observableBundle.removeEventListener();
-                    runNotification(PM.EMPTY_FN);
+                    notificationWrapper(PM.EMPTY_FN);
                 }),
             );
 

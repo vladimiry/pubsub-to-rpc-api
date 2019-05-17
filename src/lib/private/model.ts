@@ -13,9 +13,6 @@ export type Unpacked<T> =
     T extends Promise<infer U2> ? U2 :
         T extends Observable<infer U3> ? U3 :
             T;
-
-export type NeverIfEmpty<T> = keyof T extends never ? never : T;
-
 export type DropFunctionsContext<T> = {
     [K in keyof T]: T[K] extends (this: infer THIS, ...args: infer A) => infer R
         ? (this: void, ...args: A) => R
@@ -69,7 +66,7 @@ export const LOG_STUB: Readonly<InternalLogger> = {
     debug: EMPTY_FN,
 };
 
-export const DEFAULT_NOTIFICATION_WRAPPER: Required<M.CallOptions>["notificationWrapper"] = (fn) => fn();
+export const NOTIFICATION_WRAPPER_STUB: Required<M.CallOptions>["notificationWrapper"] = (fn) => fn();
 
 // NodeJS.EventEmitter.on listener function doesn't get "event" as the first argument but gets only payload args
 // so we go the similar way expecting by default that payload is the first argument as we need only payload

@@ -32,9 +32,13 @@ const perEntityManagerCache: WeakMap<M.EventListener, PerChannelResultBundles> =
 export function addEventListener<AD extends M.ApiDefinition<AD>>(
     eventListener: M.EventListener,
     channel: Channel,
-    options: { logger?: M.CreateServiceOptions<AD>["logger"] } = {},
+    options: {
+        logger: M.CreateServiceOptions<AD>["logger"],
+        notificationWrapper: Required<M.CallOptions>["notificationWrapper"];
+    },
 ): Readonly<ResultBundle> {
-    const logger = curryOwnFunctionMembers(options.logger || PM.LOG_STUB, "addEventListener()");
+    const logger = curryOwnFunctionMembers(options.logger, "addEventListener()");
+    const {notificationWrapper} = options;
     const bundles: PerChannelResultBundles = (
         perEntityManagerCache.get(eventListener)
         ||
@@ -59,7 +63,9 @@ export function addEventListener<AD extends M.ApiDefinition<AD>>(
     const subscriptionArgs: Readonly<[Channel, Listener]> = [
         channel,
         (...listenerArgs) => {
-            subject$.next({listenerArgs});
+            notificationWrapper(() => {
+                subject$.next({listenerArgs});
+            });
         },
     ];
     // TODO test "removeEventListener" called API method call completed (errored / succeeded)
