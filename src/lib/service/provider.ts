@@ -6,147 +6,137 @@ import * as M from "../model";
 import * as PM from "../private/model";
 import {curryLogger, curryOwnFunctionMembers} from "../private/util";
 
-export function buildProviderMethods<AD extends M.ApiDefinition<AD>>(
+export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends PM.DefACA | void = void>(
     serviceOptions: M.CreateServiceOptions<AD>,
-): Pick<M.CreateServiceReturn<AD>, "register"> {
-    const register: ReturnType<typeof buildProviderMethods>["register"] = (
-        actions,
-        eventEmitter,
-        options = {},
-    ) => {
-        const {
-            onEventResolver = ((...listenerArgs) => {
-                return {
-                    payload: listenerArgs[PM.ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX],
-                    emitter: eventEmitter,
-                };
-            }) as M.ProviderOnEventResolver,
-        } = options;
-        const logger: PM.InternalLogger = curryOwnFunctionMembers(
-            options.logger
-                ? curryLogger(options.logger)
-                : serviceOptions.logger,
-            "[provider]",
-        );
+): Pick<M.CreateServiceReturn<AD, ACA>, "register"> {
+    return {
+        register(
+            actions,
+            eventEmitter,
+            {
+                logger: _logger_, // tslint:disable-line:variable-name
+                onEventResolver = (...listenerArgs) => {
+                    return {
+                        payload: listenerArgs[PM.ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX],
+                        emitter: eventEmitter,
+                    };
+                },
+            }: M.CreateServiceRegisterOptions<AD, ACA> = {},
+        ) {
+            const logger: PM.InternalLogger = curryOwnFunctionMembers(
+                _logger_
+                    ? curryLogger(_logger_)
+                    : serviceOptions.logger,
+                "[provider]",
+            );
 
-        logger.info(`register()`);
+            logger.info("register()");
 
-        const subscriptions: Map<PM.PayloadUid, Pick<Subscription, "unsubscribe">> = new Map();
-        const listenerSubscriptionArgs: PM.Arguments<typeof eventEmitter.on> = [
-            serviceOptions.channel,
-            (...listenerArgs) => {
-                const resolvedArgs = onEventResolver(...listenerArgs);
-                const {payload} = resolvedArgs;
-                const {name, uid} = payload;
-                const logData = JSON.stringify({name, channel: serviceOptions.channel, payloadType: payload.type, uid});
+            const subscriptions: Map<PM.PayloadUid, Pick<Subscription, "unsubscribe">> = new Map();
+            const listenerSubscriptionArgs: Readonly<PM.Arguments<typeof eventEmitter.on>> = [
+                serviceOptions.channel,
+                (...listenerArgs) => {
+                    const resolvedArgs = onEventResolver(...(listenerArgs as Exclude<ACA, void>));
+                    const {payload} = resolvedArgs;
+                    const {name, uid} = payload;
+                    const baseLogData = JSON.stringify({name, channel: serviceOptions.channel, payloadType: payload.type, uid});
+                    const unsubscribe = (logDataAppend: string = "") => {
+                        const logData = baseLogData + logDataAppend;
+                        const subscription = subscriptions.get(uid);
 
-                // unsubscribe forced on the client side, normally occurring on "finishPromise" resolving
-                if (payload.type === "unsubscribe") {
-                    const subscription = subscriptions.get(uid);
+                        if (!subscription) {
+                            // logger.debug(`subscription for uid="${uid}" has already been removed`, logData);
+                            return;
+                        }
 
-                    if (!subscription) {
-                        logger.debug(`subscription for uid="${uid}" has already been removed`);
+                        subscription.unsubscribe();
+                        subscriptions.delete(uid);
+
+                        logger.debug(`subscription removed, subscriptions count: ${subscriptions.size}`, logData);
+                    };
+
+                    if (payload.type === "unsubscribe-request") {
+                        // triggered by client
+                        unsubscribe(` ${JSON.stringify({reason: payload.reason})}`);
                         return;
                     }
 
-                    subscription.unsubscribe();
-                    subscriptions.delete(uid);
+                    if (payload.type !== "request") {
+                        return;
+                    }
 
-                    logger.debug(`unsubscribe`, logData);
-                    logger.debug(`subscription removed, subscriptions count: ${subscriptions.size}`, logData);
-                }
+                    const action = actions[name];
+                    const actionCtx: M.ActionContext<typeof listenerArgs> = {args: listenerArgs};
 
-                if (payload.type !== "request") {
-                    return;
-                }
+                    type ActionUnpackedOutput = PM.Unpacked<ReturnType<typeof action>>;
 
-                const action = actions[name];
-                const actionCtx: M.ActionContext<typeof listenerArgs> = {args: listenerArgs};
+                    // TODO TS: get rid of typecasting
+                    //  - just "action.apply(actionCtx, payload.args)" should work
+                    //  - no need to specify "Observable<ActionUnpackedOutput> | Promise<ActionUnpackedOutput>" type explicitly
+                    const actionResult: Observable<ActionUnpackedOutput> | Promise<ActionUnpackedOutput>
+                        = (action as PM.Any).apply(actionCtx, payload.args);
 
-                // TODO TS: get rid of typecasting
-                type ActionOutput = Extract<PM.ResponsePayload<AD>, { data: PM.Any }>["data"];
-                const actionResult = (action as PM.Any).apply(actionCtx, payload.args) as Observable<ActionOutput> | Promise<ActionOutput>;
+                    const handlers = (() => {
+                        const emit = (() => {
+                            const {emitter} = resolvedArgs || {emitter: eventEmitter};
+                            return (payloadResponse: PM.PayloadResponse<AD>) => {
+                                emitter.emit(serviceOptions.channel, payloadResponse);
+                            };
+                        })();
+                        const basePayloadResponse: Readonly<Pick<PM.PayloadResponse<AD>, "uid" | "name" | "type">>
+                            = {type: "response", uid, name};
 
-                const handlers = (() => {
-                    const emit = (() => {
-                        const {emitter} = resolvedArgs || {emitter: eventEmitter};
-                        return (data: PM.ResponsePayload<AD>) => {
-                            emitter.emit(serviceOptions.channel, data);
+                        return {
+                            next(value: ActionUnpackedOutput) {
+                                const responseData = payload.serialization === "jsan"
+                                    ? jsan.stringify(value, null, null, {refs: true})
+                                    : value;
+                                emit({...basePayloadResponse, data: responseData as typeof value});
+                                logger.debug(`notification.emit`, baseLogData);
+                            },
+                            error(error: Error) {
+                                emit({...basePayloadResponse, error: serializerr(error)});
+                                unsubscribe();
+                                logger.error(`notification.error`, error, baseLogData);
+                            },
+                            complete() {
+                                emit({...basePayloadResponse, complete: true});
+                                unsubscribe();
+                                logger.debug(`notification.complete`, baseLogData);
+                            },
                         };
                     })();
-                    const unsubscribe = () => {
-                        logger.debug(`unsubscribe triggered by client signal`, logData);
 
-                        setTimeout(() => {
-                            const subscription = subscriptions.get(uid);
+                    const actionResult$ = ("subscribe" in actionResult && "pipe" in actionResult)
+                        ? actionResult
+                        : ("then" in actionResult && "catch" in actionResult)
+                            ? from(actionResult)
+                            : throwError(new Error("Unexpected action result type received"));
 
-                            if (!subscription) {
-                                logger.debug(`subscription has not been resolved`, logData);
-                                return;
-                            }
+                    subscriptions.set(
+                        uid,
+                        actionResult$.subscribe(handlers.next, handlers.error, handlers.complete),
+                    );
 
-                            subscription.unsubscribe();
-                            subscriptions.delete(uid);
+                    logger.debug(`subscription added, subscriptions count: ${subscriptions.size}`, baseLogData);
+                },
+            ];
 
-                            logger.debug(`subscription removed, subscriptions count: ${subscriptions.size}`, logData);
-                        }, 0);
-                    };
-                    const baseResponse: Readonly<Pick<PM.ResponsePayload<AD>, "uid" | "name" | "type">> = {type: "response", uid, name};
+            eventEmitter.on(...listenerSubscriptionArgs);
 
-                    return {
-                        next(value: ActionOutput) {
-                            const responseData = payload.serialization === "jsan"
-                                ? jsan.stringify(value, null, null, {refs: true})
-                                : value;
-                            emit({...baseResponse, data: responseData as typeof value});
-                            logger.debug(`notification.emit`, logData);
-                        },
-                        error(error: Error) {
-                            emit({...baseResponse, error: serializerr(error)});
-                            unsubscribe();
-                            logger.error(`notification.error`, error, logData);
-                        },
-                        complete() {
-                            emit({...baseResponse, complete: true});
-                            unsubscribe();
-                            logger.debug(`notification.complete`, logData);
-                        },
-                    };
-                })();
+            logger.info(`registered`, JSON.stringify({actionsKeys: Object.keys(actions)}));
 
-                const actionResult$ = ("subscribe" in actionResult && "pipe" in actionResult)
-                    ? actionResult
-                    : ("then" in actionResult && "catch" in actionResult)
-                        ? from(actionResult)
-                        : throwError(new Error("Unexpected action result type received"));
-
-                subscriptions.set(
-                    uid,
-                    actionResult$.subscribe(handlers.next, handlers.error, handlers.complete),
-                );
-
-                logger.debug(`subscription added, subscriptions count: ${subscriptions.size}`, logData);
-            },
-        ];
-
-        eventEmitter.on(...listenerSubscriptionArgs);
-
-        logger.info(`registered`, JSON.stringify({actionsKeys: Object.keys(actions)}));
-
-        return {
-            deregister() {
-                eventEmitter.removeListener(...listenerSubscriptionArgs);
-                subscriptions.forEach((subscription) => subscription.unsubscribe());
-                subscriptions.clear();
-                logger.info(`"unregister" called`);
-            },
-            resourcesStat() {
-                return {subscriptionsCount: subscriptions.size};
-            },
-        };
-    };
-
-    return {
-        register,
+            return {
+                deregister() {
+                    eventEmitter.removeListener(...listenerSubscriptionArgs);
+                    subscriptions.forEach((subscription) => subscription.unsubscribe());
+                    subscriptions.clear();
+                    logger.info(`"unregister" called`);
+                },
+                resourcesStat() {
+                    return {subscriptionsCount: subscriptions.size};
+                },
+            };
+        },
     };
 }

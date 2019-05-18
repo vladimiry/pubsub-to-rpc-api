@@ -2,13 +2,13 @@ import {Observable} from "rxjs";
 
 import * as PM from "./private/model";
 
-// don't extend NodeJS.EventEmitter
+// don't extend/expose NodeJS.EventEmitter
 export interface EventListener {
     on: (event: string, listener: (...args: PM.Any[]) => void) => this;
     removeListener: (event: string, listener: (...args: PM.Any[]) => void) => this;
 }
 
-// don't extend NodeJS.EventEmitter
+// don't extend/expose NodeJS.EventEmitter
 export interface EventEmitter {
     emit(event: string, ...args: PM.Any[]): void | boolean;
 }
@@ -22,28 +22,27 @@ export interface Emitters {
 
 export type EmittersResolver = () => Emitters;
 
-export type ProviderOnEventResolver<ListenerArgs extends PM.Any[] = PM.Any[]> = (
-    //  listener args of EventListener.on
-    ...args: ListenerArgs
+export type ProviderOnEventResolver<AD extends ApiDefinition<AD>, ACA extends PM.DefACA = PM.DefACA> = (
+    ...args: ACA
 ) => {
-    payload: PM.Any; // TODO use "PM.Payload<AD>"
+    payload: PM.Payload<AD>;
     emitter: EventEmitter;
 };
 
-export type ClientOnEventResolver<ListenerArgs extends PM.Any[] = PM.Any[]> = (
-    //  listener args of EventListener.on
-    ...args: ListenerArgs
+export type ClientOnEventResolver<AD extends ApiDefinition<AD>, ACA extends PM.DefACA = PM.DefACA> = (
+    ...args: ACA
 ) => {
-    payload: PM.Any; // TODO use "PM.Payload<AD>"
+    payload: PM.Payload<AD>;
 };
 
-export interface CallOptions {
+export interface CallOptions<AD extends ApiDefinition<AD>, ACA extends PM.DefACA = PM.DefACA> {
     timeoutMs: number;
     finishPromise?: Promise<PM.Any>;
     listenChannel?: string;
     notificationWrapper?: <R extends PM.Any>(fn: (...args: PM.Any[]) => R) => R;
     serialization?: "jsan";
-    onEventResolver?: ClientOnEventResolver;
+    onEventResolver?: ClientOnEventResolver<AD, ACA>;
+    logger?: Logger;
 }
 
 export type LoggerFn = (...args: PM.Any[]) => void;
@@ -81,9 +80,7 @@ export type ScanService<I extends ({
     RN extends string = "register",
     API extends PM.Arguments<I[RN]>[0] = PM.Arguments<I[RN]>[0]> = ScanResult<API>;
 
-type DefACA = PM.Any[];
-
-export type ActionContext<ACA extends DefACA = DefACA> = Readonly<{ args: Readonly<ACA> }>;
+export type ActionContext<ACA extends PM.DefACA = PM.DefACA> = Readonly<{ args: Readonly<ACA> }>;
 
 type ActionTypeString<T extends "promise" | "observable", IN extends PM.Any = void, OUT extends PM.Any = void> =
     string
@@ -114,34 +111,39 @@ export type ApiDefinition<T> = {
         : never;
 };
 
-export type Actions<AD extends ApiDefinition<AD>, ACA extends DefACA | void = void> = {
+export type Actions<AD extends ApiDefinition<AD>, ACA extends PM.DefACA | void = void> = {
     [K in Extract<keyof AD, string>]: AD[K] extends ActionTypeString<infer OUT_WRAP, infer IN, infer OUT>
-        ? OUT_WRAP extends "promise" ? (this: void | (ACA extends DefACA ? ActionContext<ACA> : void), arg: IN) => Promise<OUT>
-            : OUT_WRAP extends "observable" ? (this: void | (ACA extends DefACA ? ActionContext<ACA> : void), arg: IN) => Observable<OUT>
+        ? OUT_WRAP extends "promise" ? (this: void | (ACA extends PM.DefACA ? ActionContext<ACA> : void), arg: IN) => Promise<OUT>
+            : OUT_WRAP extends "observable" ? (this: void | (ACA extends PM.DefACA ? ActionContext<ACA> : void), arg: IN) => Observable<OUT>
                 : never
         : never;
 };
 
-export interface CreateServiceReturn<AD extends ApiDefinition<AD>, ACA extends DefACA | void = void> {
+export interface CreateServiceRegisterOptions<AD extends ApiDefinition<AD>, ACA extends PM.DefACA | void = void> {
+    onEventResolver?: ProviderOnEventResolver<AD, Exclude<ACA, void>>;
+    logger?: Logger;
+}
+
+export interface CreateServiceReturn<AD extends ApiDefinition<AD>, ACA extends PM.DefACA | void = void> {
     register: <A extends Actions<AD, ACA>>(
         actions: A,
         eventEmitter: CombinedEventEmitter,
-        options?: { onEventResolver?: ProviderOnEventResolver; logger?: Logger; },
+        options?: CreateServiceRegisterOptions<AD, ACA>,
     ) => {
         deregister: () => void;
         resourcesStat: () => { subscriptionsCount: number; }
     };
-    call: <A extends PM.DropFunctionsContext<Actions<AD, ACA>>, N extends keyof A>(
+    call: <A extends PM.DropFunctionsContext<Actions<AD, ACA>>, N extends keyof A = keyof A>(
         name: N,
-        options: CallOptions,
+        options: CallOptions<AD, Exclude<ACA, void>>,
         emitters: Emitters | EmittersResolver,
     ) => A[N];
     caller: (
-        emiters: Emitters | EmittersResolver,
-        defaultOptions?: CallOptions,
-    ) => <A extends PM.DropFunctionsContext<Actions<AD, ACA>>, N extends keyof A>(
+        emitters: Emitters | EmittersResolver,
+        defaultOptions?: CallOptions<AD, Exclude<ACA, void>>,
+    ) => <A extends PM.DropFunctionsContext<Actions<AD, ACA>>, N extends keyof A = keyof A>(
         name: N,
-        options?: CallOptions,
+        options?: CallOptions<AD, Exclude<ACA, void>>,
     ) => A[N];
 }
 

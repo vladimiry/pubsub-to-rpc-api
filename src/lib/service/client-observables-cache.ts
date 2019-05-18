@@ -8,58 +8,54 @@ type Channel = string;
 
 type Listener = PM.Arguments<M.EventListener["on"] & M.EventListener["removeListener"]>[1];
 
-interface ObservableValue {
-    listenerArgs: PM.Arguments<Listener>;
-}
+const observableBundleStatsProp = Symbol(`[${PM.MODULE_NAME}] "ObservableBundle" stats property symbol`);
 
-const resultBundlePrivateProp = Symbol(`[${PM.MODULE_NAME}] "ResultBundle" private property symbol`);
-
-interface ResultBundle {
-    observable$: Observable<ObservableValue>;
+interface ObservableBundle {
+    observable$: Observable<{ listenerArgs: PM.Arguments<Listener> }>;
     removeEventListener: () => void;
-    [resultBundlePrivateProp]: {
+    [observableBundleStatsProp]: {
         cached: Date;
         lastAccessed: Date;
         count: number;
     };
 }
 
-type PerChannelResultBundles = Map<Channel, ResultBundle>;
+type MappedByChannelObservableBundles = Map<Channel, ObservableBundle>;
 
 // TODO enable lazy initialization
-const perEntityManagerCache: WeakMap<M.EventListener, PerChannelResultBundles> = new WeakMap();
+const mappedByChannelObservableBundlesCache: WeakMap<M.EventListener, MappedByChannelObservableBundles> = new WeakMap();
 
 export function addEventListener<AD extends M.ApiDefinition<AD>>(
     eventListener: M.EventListener,
     channel: Channel,
     options: {
         logger: M.CreateServiceOptions<AD>["logger"],
-        notificationWrapper: Required<M.CallOptions>["notificationWrapper"];
+        notificationWrapper: Required<M.CallOptions<AD>>["notificationWrapper"];
     },
-): Readonly<ResultBundle> {
+): Readonly<ObservableBundle> {
     const logger = curryOwnFunctionMembers(options.logger, "addEventListener()");
     const {notificationWrapper} = options;
-    const bundles: PerChannelResultBundles = (
-        perEntityManagerCache.get(eventListener)
+    const bundlesMap: MappedByChannelObservableBundles = (
+        mappedByChannelObservableBundlesCache.get(eventListener)
         ||
         (() => {
-            const map = new Map();
-            perEntityManagerCache.set(eventListener, map);
+            const map: MappedByChannelObservableBundles = new Map();
+            mappedByChannelObservableBundlesCache.set(eventListener, map);
             return map;
         })()
     );
-    const exitingBundle = bundles.get(channel);
+    const existingBundle = bundlesMap.get(channel);
 
-    if (exitingBundle) {
-        exitingBundle[resultBundlePrivateProp].count++;
-        exitingBundle[resultBundlePrivateProp].lastAccessed = new Date();
+    if (existingBundle) {
+        existingBundle[observableBundleStatsProp].count++;
+        existingBundle[observableBundleStatsProp].lastAccessed = new Date();
 
-        logger.debug("[cache]", "item reused", JSON.stringify(resolveCacheStat(eventListener, channel)));
+        logger.debug("[cache] reuse event listener", JSON.stringify(resolveCacheStat(eventListener, channel)));
 
-        return exitingBundle;
+        return existingBundle;
     }
 
-    const subject$ = new Subject<ObservableValue>();
+    const subject$ = new Subject<PM.Unpacked<ObservableBundle["observable$"]>>();
     const subscriptionArgs: Readonly<[Channel, Listener]> = [
         channel,
         (...listenerArgs) => {
@@ -68,41 +64,47 @@ export function addEventListener<AD extends M.ApiDefinition<AD>>(
             });
         },
     ];
-    // TODO test "removeEventListener" called API method call completed (errored / succeeded)
+    // TODO test "removeEventListener" called on API method call got finalized (errored / succeeded)
     const removeEventListener = () => {
-        const privateProp = newBundle[resultBundlePrivateProp];
+        const privateProp = newBundle[observableBundleStatsProp];
 
         privateProp.count--;
 
-        if (!privateProp.count) {
-            eventListener.removeListener(...subscriptionArgs);
-            logger.debug("[cache]", "item removed", JSON.stringify(resolveCacheStat(eventListener, channel)));
+        const needToRemoveEventListener = privateProp.count === 0;
 
-            bundles.delete(channel);
-            logger.debug("[cache]", "item removed", JSON.stringify(resolveCacheStat(eventListener, channel)));
+        if (!needToRemoveEventListener) {
+            return;
+        }
 
-            if (!bundles.size) {
-                perEntityManagerCache.delete(eventListener);
-                logger.debug("[cache]", "root cache removed", JSON.stringify(resolveCacheStat(eventListener, channel)));
-            }
+        eventListener.removeListener(...subscriptionArgs);
+        bundlesMap.delete(channel);
+        logger.debug("[cache] remove event listener", JSON.stringify(resolveCacheStat(eventListener, channel)));
+
+        const needToRemoveBundlesMap = bundlesMap.size === 0;
+
+        if (needToRemoveBundlesMap) {
+            mappedByChannelObservableBundlesCache.delete(eventListener);
+            logger.debug("[cache] remove bundles map as empty", JSON.stringify(resolveCacheStat(eventListener, channel)));
         }
     };
-    const newBundleDate = new Date();
-    const newBundle = {
+    const newBundleStatsDate = new Date();
+    const newBundle: ObservableBundle = {
         observable$: subject$.asObservable(),
+        // TODO consider removing event listener with configurable timeout
+        //      so the existing listener could be reused by new consumer appeared withing timeout so debounce-like logic
         removeEventListener,
-        [resultBundlePrivateProp]: {
-            cached: newBundleDate,
-            lastAccessed: newBundleDate,
+        [observableBundleStatsProp]: {
+            cached: newBundleStatsDate,
+            lastAccessed: newBundleStatsDate,
             count: 1,
         },
     };
 
-    bundles.set(channel, newBundle);
+    bundlesMap.set(channel, newBundle);
 
     eventListener.on(...subscriptionArgs);
 
-    logger.debug("[cache]", "item added", JSON.stringify(resolveCacheStat(eventListener, channel)));
+    logger.debug("[cache] add event listener", JSON.stringify(resolveCacheStat(eventListener, channel)));
 
     return newBundle;
 }
@@ -117,7 +119,7 @@ function resolveCacheStat(
     lastAccessed: Date | null;
 
 } {
-    const bundles = perEntityManagerCache.get(eventListener);
+    const bundlesMap = mappedByChannelObservableBundlesCache.get(eventListener);
     const stats: ReturnType<typeof resolveCacheStat> = {
         channel,
         totalCachedItemsPerEventListener: 0,
@@ -125,17 +127,17 @@ function resolveCacheStat(
         lastAccessed: null,
     };
 
-    if (!bundles) {
+    if (!bundlesMap) {
         return stats;
     }
 
-    stats.totalCachedItemsPerEventListener = bundles.size;
+    stats.totalCachedItemsPerEventListener = bundlesMap.size;
 
-    const bundle = bundles.get(channel);
+    const bundle = bundlesMap.get(channel);
 
     if (bundle) {
-        stats.cached = bundle[resultBundlePrivateProp].cached;
-        stats.lastAccessed = bundle[resultBundlePrivateProp].lastAccessed;
+        stats.cached = bundle[observableBundleStatsProp].cached;
+        stats.lastAccessed = bundle[observableBundleStatsProp].lastAccessed;
     }
 
     return stats;

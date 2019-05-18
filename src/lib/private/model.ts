@@ -21,33 +21,28 @@ export type DropFunctionsContext<T> = {
 
 export type PayloadUid = string;
 
-export type RequestPayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<AD> = M.Actions<AD>> =
-    |
-    ({
-        type: "request";
-        uid: PayloadUid;
-        name: keyof A;
-        args: Arguments<A[keyof A]>;
-    } & Pick<M.CallOptions, "serialization">)
-    |
-    {
-        type: "unsubscribe";
-        uid: PayloadUid;
-        name: keyof A;
-    };
+interface PayloadBase<AD extends M.ApiDefinition<AD>> {
+    uid: PayloadUid;
+    name: keyof M.Actions<AD>;
+}
 
-export type ResponsePayload<AD extends M.ApiDefinition<AD>, A extends M.Actions<AD> = M.Actions<AD>> =
-    {
-        type: "response";
-        uid: PayloadUid;
-        name: keyof A;
-    } & (
-    | { data: Unpacked<ReturnType<A[keyof A]>> }
-    | { complete: boolean }
+export type PayloadRequest<AD extends M.ApiDefinition<AD>> = PayloadBase<AD>
+    & (
+    | ({ type: "request"; args: Arguments<M.Actions<AD>[keyof M.Actions<AD>]>; } & Pick<M.CallOptions<AD>, "serialization">)
+    | ({ type: "unsubscribe-request"; reason: "finish promise" | "timeout"; })
+    );
+
+export type PayloadResponse<AD extends M.ApiDefinition<AD>> = PayloadBase<AD>
+    & ({ type: "response"; })
+    & (
+    | { data: Unpacked<ReturnType<M.Actions<AD>[keyof M.Actions<AD>]>> }
+    | { complete: true }
     | { error: Any }
     );
 
-export type Payload<AD extends M.ApiDefinition<AD>> = RequestPayload<AD> | ResponsePayload<AD>;
+export type Payload<AD extends M.ApiDefinition<AD>> = PayloadRequest<AD> | PayloadResponse<AD>;
+
+export type DefACA = Any[];
 
 export const MODULE_NAME = "pubsub-to-rpc-api";
 
@@ -66,7 +61,7 @@ export const LOG_STUB: Readonly<InternalLogger> = {
     debug: EMPTY_FN,
 };
 
-export const NOTIFICATION_WRAPPER_STUB: Required<M.CallOptions>["notificationWrapper"] = (fn) => fn();
+export const NOTIFICATION_WRAPPER_STUB: Required<M.CallOptions<Any>>["notificationWrapper"] = (fn) => fn();
 
 // NodeJS.EventEmitter.on listener function doesn't get "event" as the first argument but gets only payload args
 // so we go the similar way expecting by default that payload is the first argument as we need only payload

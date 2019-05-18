@@ -55,7 +55,7 @@ test("calling 2 methods", async (t) => {
 
     t.true(clientEmitterSpy.calledWithExactly(
         channel,
-        sinon.match((request: PM.RequestPayload<typeof apiDefinition>) => {
+        sinon.match((request: PM.PayloadRequest<typeof apiDefinition>) => {
             const uid = Boolean(request.uid.length);
             const type = request.type === "request";
             const name = request.name === "method1" || request.name === "method2";
@@ -73,7 +73,7 @@ test("calling 2 methods", async (t) => {
 
     t.true(providerEmitterSpy.calledWithExactly(
         channel,
-        sinon.match((response: PM.ResponsePayload<typeof apiDefinition>) => {
+        sinon.match((response: PM.PayloadResponse<typeof apiDefinition>) => {
             const uid = Boolean(response.uid.length);
             const type = response.type === "response";
             const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems as PM.Any);
@@ -173,7 +173,7 @@ test("calling method without arguments", async (t) => {
     t.true(emitSpy.calledWithExactly(
         channel,
         sinon.match(
-            (request: PM.RequestPayload<typeof apiDefinition>) => {
+            (request: PM.PayloadRequest<typeof apiDefinition>) => {
                 return request.type === "request" && !request.args.length;
             },
             `request should have empty "args" array`,

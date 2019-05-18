@@ -4,7 +4,7 @@ import {buildClientMethods} from "./client";
 import {buildProviderMethods} from "./provider";
 import {curryLogger} from "../private/util";
 
-export function createService<AD extends M.ApiDefinition<AD>, ACA extends PM.Any[] | void = void>(
+export function createService<AD extends M.ApiDefinition<AD>, ACA extends PM.DefACA | void = void>(
     {
         channel,
         apiDefinition,
@@ -17,8 +17,8 @@ export function createService<AD extends M.ApiDefinition<AD>, ACA extends PM.Any
     logger.info("createService()");
 
     const serviceOptions: M.CreateServiceOptions<AD> = {channel, apiDefinition, callTimeoutMs, logger};
-    const providerMethods = buildProviderMethods<AD>(serviceOptions);
-    const clientMethods = buildClientMethods<AD>(serviceOptions);
+    const providerMethods = buildProviderMethods<AD, ACA>(serviceOptions);
+    const clientMethods = buildClientMethods<AD, ACA>(serviceOptions);
 
     return {
         ...providerMethods,

@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-rpc-api",
-  "version": "5.1.0-beta3",
+  "version": "5.1.0-beta4",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -79,6 +79,8 @@
     "ts-node": "^8.1.0",
     "tsconfig-paths": "^3.8.0",
     "tslint": "^5.16.0",
+    "tslint-consistent-codestyle": "^1.15.1",
+    "tslint-eslint-rules": "^5.4.0",
     "tslint-rules-bunch": "^0.0.7",
     "typescript": "^3.4.5"
   }

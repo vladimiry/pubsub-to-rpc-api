@@ -7,19 +7,13 @@ import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operat
 import * as M from "../model";
 import * as PM from "../private/model";
 import {addEventListener} from "./client-observables-cache";
-import {curryOwnFunctionMembers} from "../private/util";
+import {curryLogger, curryOwnFunctionMembers} from "../private/util";
 
-export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
+export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends PM.DefACA | void = void>(
     serviceOptions: M.CreateServiceOptions<AD>,
-): Pick<M.CreateServiceReturn<AD>, "call" | "caller"> {
-    const logger = curryOwnFunctionMembers(serviceOptions.logger || PM.LOG_STUB, "[client]");
+): Pick<M.CreateServiceReturn<AD, ACA>, "call" | "caller"> {
     const emitChannel = serviceOptions.channel;
-    const onEventResolverDefault: M.ClientOnEventResolver = (...listenerArgs) => {
-        return {
-            payload: listenerArgs[PM.ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX],
-        };
-    };
-    const call: ReturnType<typeof buildClientMethods>["call"] = (
+    const call: M.CreateServiceReturn<AD, ACA>["call"] = (
         name,
         {
             timeoutMs,
@@ -27,31 +21,46 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
             listenChannel = emitChannel,
             notificationWrapper = PM.NOTIFICATION_WRAPPER_STUB,
             serialization,
-            onEventResolver = onEventResolverDefault,
+            onEventResolver = ((...listenerArgs) => {
+                return {
+                    payload: listenerArgs[PM.ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX],
+                };
+            }) as M.ClientOnEventResolver<AD, Exclude<ACA, void>>,
+            logger: _logger_, // tslint:disable-line:variable-name
         },
         emitters,
     ) => {
+        const logger: PM.InternalLogger = curryOwnFunctionMembers(
+            _logger_
+                ? curryLogger(_logger_)
+                : serviceOptions.logger,
+            "[client]",
+        );
+
         type Action = M.Actions<AD>[keyof M.Actions<AD>]; // TODO TS: use "M.Actions<AD>[typeof name]"
         type ActionOutput = PM.Unpacked<ReturnType<Action>>;
 
         return ((...actionArgs: PM.Arguments<Action>) => {
             const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
-            const request: Readonly<PM.RequestPayload<AD>> = {
+            const request: Readonly<PM.PayloadRequest<AD>> = {
                 uid: uuid.v4(),
                 type: "request",
                 serialization,
                 name: name as unknown as keyof M.Actions<AD>, // TODO TS: get rid of typecasting
                 args: actionArgs,
             } as const;
-            const emitUnsubscribeSignalToProvider = (source: "finish promise" | "timeout") => {
-                emitter.emit(emitChannel, {type: "unsubscribe", uid: request.uid});
-                logger.debug(`sent "unsubscribe" signal to provider, source: "${source}"`);
+            const emitUnsubscribeSignalToProvider
+                = ({reason}: Pick<Extract<PM.PayloadRequest<AD>, { type: "unsubscribe-request" }>, "reason">) => {
+                const payload: Extract<PM.PayloadRequest<AD>, { type: "unsubscribe-request" }>
+                    = {type: "unsubscribe-request", uid: request.uid, name: request.name, reason};
+                emitter.emit(emitChannel, payload);
+                logger.debug(`"unsubscribe-request" signal sent to provider, source: "${reason}"`, JSON.stringify(payload));
             };
             const observableBundle = addEventListener(listener, listenChannel, {logger, notificationWrapper});
             const result$: Observable<ActionOutput> = race(
                 timer(timeoutMs).pipe(
                     mergeMap(() => {
-                        emitUnsubscribeSignalToProvider("timeout");
+                        emitUnsubscribeSignalToProvider({reason: "timeout"});
                         return throwError(
                             new Error(
                                 `Invocation timeout of calling "${name}" method on "${emitChannel}" channel with ${timeoutMs}ms timeout`,
@@ -60,9 +69,12 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
                     }),
                 ),
                 observableBundle.observable$.pipe(
-                    map(({listenerArgs}) => onEventResolver(...listenerArgs).payload as PM.Payload<AD>),
-                    filter(({uid, type}) => uid === request.uid && type === "response"),
-                    map((payload) => payload as PM.ResponsePayload<AD>),
+                    map(({listenerArgs}) => {
+                        return onEventResolver(...(listenerArgs as Exclude<ACA, void>)).payload;
+                    }),
+                    filter(({uid, type}) => {
+                        return uid === request.uid && type === "response";
+                    }),
                     takeWhile((payload) => !("complete" in payload && payload.complete)),
                     mergeMap((payload) => {
                         if ("data" in payload) {
@@ -83,7 +95,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
                     finishPromise
                         ?
                         from(finishPromise).pipe(
-                            finalize(() => emitUnsubscribeSignalToProvider("finish promise")),
+                            finalize(() => emitUnsubscribeSignalToProvider({reason: "finish promise"})),
                         )
                         :
                         NEVER,
@@ -107,22 +119,18 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>>(
                 : result$;
         }) as PM.Any; // TODO TS: get rid of typecasting
     };
-    const caller: ReturnType<typeof buildClientMethods>["caller"] = (
-        emitters,
-        defaultOptions = {timeoutMs: serviceOptions.callTimeoutMs},
-    ) => {
-        const emittersLessCall = (name: keyof M.Actions<AD>, options: M.CallOptions = defaultOptions) => {
-            return call(
+
+    return {
+        call,
+        caller(
+            emitters,
+            defaultOptions = {timeoutMs: serviceOptions.callTimeoutMs},
+        ) {
+            return (name, options = defaultOptions) => call(
                 name,
                 {...defaultOptions, ...options},
                 emitters,
             );
-        };
-        return emittersLessCall as PM.Any; // TODO TS: get rid of typecasting
-    };
-
-    return {
-        call,
-        caller,
+        },
     };
 }
