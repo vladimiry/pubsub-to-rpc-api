@@ -1,7 +1,7 @@
+import UUID from "pure-uuid";
 import rewiremock from "rewiremock";
 import sinon from "sinon";
 import test from "ava";
-import uuid from "uuid-browser";
 import {EventEmitter} from "events";
 import {bufferCount, delay, map, take} from "rxjs/operators";
 import {from, interval, merge, of, throwError} from "rxjs";
@@ -289,5 +289,5 @@ test("preserve references", async (t) => {
 });
 
 function randomStr(): string {
-    return uuid.v4();
+    return new UUID(4).format();
 }

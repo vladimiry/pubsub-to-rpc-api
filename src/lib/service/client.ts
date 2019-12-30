@@ -1,6 +1,6 @@
+import UUID from "pure-uuid";
 import deserializeError from "deserialize-error";
 import jsan from "jsan";
-import uuid from "uuid-browser";
 import {NEVER, Observable, from, race, throwError, timer} from "rxjs";
 import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operators";
 
@@ -43,7 +43,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
         return ((...actionArgs: PM.Arguments<Action>) => {
             const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
             const request: Readonly<PM.PayloadRequest<AD>> = {
-                uid: uuid.v4(),
+                uid: new UUID(4).format(),
                 type: "request",
                 serialization,
                 name: name as unknown as keyof M.Actions<AD>, // TODO TS: get rid of typecasting
