@@ -1,4 +1,4 @@
-import {Observable} from "rxjs";
+import {Observable, Subscribable} from "rxjs";
 
 import * as PM from "./private/model";
 
@@ -58,12 +58,12 @@ export interface Logger {
 interface ScanResult<API> {
     ApiImpl: API;
     ApiImplArgs: {
-        [K in keyof API]: API[K] extends (...args: infer IN) => Observable<infer OUT> | Promise<infer OUT>
+        [K in keyof API]: API[K] extends (...args: infer IN) => Observable<infer OUT> | Promise<infer OUT> | SubscribableLike<infer OUT>
             ? IN
             : never
     };
     ApiImplReturns: {
-        [K in keyof API]: API[K] extends (...args: infer IN) => Observable<infer OUT> | Promise<infer OUT>
+        [K in keyof API]: API[K] extends (...args: infer IN) => Observable<infer OUT> | Promise<infer OUT> | SubscribableLike<infer OUT>
             ? OUT
             : never
     };
@@ -82,14 +82,21 @@ export type ScanService<I extends ({
 
 export type ActionContext<ACA extends PM.DefACA = PM.DefACA> = Readonly<{ args: Readonly<ACA> }>;
 
-type ActionTypeString<T extends "promise" | "observable", IN extends PM.Any = void, OUT extends PM.Any = void> =
-    string
+type ActionTypeString<T extends "promise" | "observable" | "subscribableLike", IN extends PM.Any = void, OUT extends PM.Any = void> =
+    T
     &
     {
         in: IN;
         out: OUT;
         outType: T,
     };
+
+// TODO use "export type SubscribableLike<T> = Subscribable<T>" so "rxjs.from(subscribable)" call just works
+// it's currently impossible to use "rxjs.from(subscribable)" call since it will throw error
+// because rxjs checks specific Symbol to present in "subscribable", see https://github.com/ReactiveX/rxjs/issues/4532
+export type SubscribableLike<T> = PM.NoExtraProperties<{
+    subscribeLike: Subscribable<T>["subscribe"];
+}>
 
 // tslint:disable-next-line:variable-name
 export const ActionType = {
@@ -99,6 +106,10 @@ export const ActionType = {
     },
     Observable: <IN extends PM.Any = void, OUT extends PM.Any = void>() => {
         const result = "observable";
+        return result as ActionTypeString<typeof result, IN, OUT>;
+    },
+    SubscribableLike: <IN extends PM.Any = void, OUT extends PM.Any = void>() => {
+        const result = "subscribableLike";
         return result as ActionTypeString<typeof result, IN, OUT>;
     },
 } as const;
@@ -113,9 +124,13 @@ export type ApiDefinition<T> = {
 
 export type Actions<AD extends ApiDefinition<AD>, ACA extends PM.DefACA | void = void> = {
     [K in Extract<keyof AD, string>]: AD[K] extends ActionTypeString<infer OUT_WRAP, infer IN, infer OUT>
-        ? OUT_WRAP extends "promise" ? (this: void | (ACA extends PM.DefACA ? ActionContext<ACA> : void), arg: IN) => Promise<OUT>
-            : OUT_WRAP extends "observable" ? (this: void | (ACA extends PM.DefACA ? ActionContext<ACA> : void), arg: IN) => Observable<OUT>
-                : never
+        ? OUT_WRAP extends "promise"
+            ? (this: void | (ACA extends PM.DefACA ? ActionContext<ACA> : void), arg: IN) => Promise<OUT>
+            : OUT_WRAP extends "observable"
+                ? (this: void | (ACA extends PM.DefACA ? ActionContext<ACA> : void), arg: IN) => Observable<OUT>
+                : OUT_WRAP extends "subscribableLike"
+                    ? (this: void | (ACA extends PM.DefACA ? ActionContext<ACA> : void), arg: IN) => SubscribableLike<OUT>
+                    : never
         : never;
 };
 

@@ -5,6 +5,7 @@
     "./tslint-extending/tslint-consistent-codestyle.json"
   ],
   "rules": {
+    "array-type": [true, "array-simple"],
     "max-line-length": [
       true,
       140
