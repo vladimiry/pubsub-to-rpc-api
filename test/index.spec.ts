@@ -7,7 +7,7 @@ import {bufferCount, delay, map, take} from "rxjs/operators";
 import {from, interval, merge, of, throwError} from "rxjs";
 
 import * as PM from "lib/private/model";
-import {ActionType, createService} from "lib";
+import {ActionType, createService, subscribableLikeToObservable} from "lib";
 
 // TODO extend test cases:
 //      - a whole emitter/listener.on/off/emit cycle of provider and client
@@ -15,10 +15,11 @@ import {ActionType, createService} from "lib";
 //      - custom "onEventResolver"
 //      - etc
 
-test("calling 2 methods", async (t) => {
+test("calling 3 methods", async (t) => {
     const apiDefinition = {
         method1: ActionType.Promise<{ input1: string }, { output1: number }>(),
         method2: ActionType.Observable<number, { output2: number }>(),
+        method3: ActionType.SubscribableLike<number, { output3: number }>(),
     };
     const channel = randomStr();
     const service = createService({channel, apiDefinition});
@@ -28,17 +29,28 @@ test("calling 2 methods", async (t) => {
     const method1Expected = {output1: Number(method1Input.input1)};
     const method2Input = 123;
     const method2ExpectedItems = [0, 1, 2].map((i) => ({output2: method2Input * i}));
+    const method3Input = 345;
+    const method3ExpectedItems = [0, 1, 2].map((i) => ({output3: method3Input * i}));
     const clientEmitterSpy = sinon.spy(clientEmitters.emitter, "emit");
     const providerEmitterSpy = sinon.spy(providerEmitters.emitter, "emit");
     const client = service.caller(clientEmitters);
 
     service.register(
         {
-            method1: async (val) => method1Expected,
+            method1: async () => method1Expected,
             method2: (val) => interval(150).pipe(
                 take(3),
                 map((v) => ({output2: val * v})),
             ),
+            method3: (val) => {
+                const observable$ = interval(250).pipe(
+                    take(3),
+                    map((v) => ({output3: val * v})),
+                );
+                return {
+                    subscribeLike: observable$.subscribe.bind(observable$),
+                };
+            },
         },
         providerEmitters.listener,
         {
@@ -51,6 +63,9 @@ test("calling 2 methods", async (t) => {
     await merge(
         from(client("method1")(method1Input)),
         client("method2")(method2Input),
+        subscribableLikeToObservable(
+            client("method3")(method3Input),
+        ),
     ).toPromise();
 
     t.true(clientEmitterSpy.calledWithExactly(
@@ -58,12 +73,14 @@ test("calling 2 methods", async (t) => {
         sinon.match((request: PM.PayloadRequest<typeof apiDefinition>) => {
             const uid = Boolean(request.uid.length);
             const type = request.type === "request";
-            const name = request.name === "method1" || request.name === "method2";
+            const name = request.name === "method1" || request.name === "method2" || request.name === "method3";
             const data = "args" in request
                 ? (
                     (request.name === "method1" && request.args[0] === method1Input)
                     ||
                     (request.name === "method2" && request.args[0] === method2Input)
+                    ||
+                    (request.name === "method3" && request.args[0] === method3Input)
                 )
                 : false;
 
@@ -76,7 +93,15 @@ test("calling 2 methods", async (t) => {
         sinon.match((response: PM.PayloadResponse<typeof apiDefinition>) => {
             const uid = Boolean(response.uid.length);
             const type = response.type === "response";
-            const data = "data" in response && (response.data === method1Expected || response.data === method2ExpectedItems as PM.Any);
+            const data = "data" in response
+                &&
+                (
+                    response.data === method1Expected
+                    ||
+                    response.data === method2ExpectedItems as PM.Any
+                    ||
+                    response.data === method3ExpectedItems as PM.Any
+                );
 
             return uid && type && data;
         }, "request"),

@@ -111,12 +111,14 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
             }, 0);
 
             // TODO TS: get rid of typecasting
-            // TODO TS: value should be automatically inferred as "promise" | "observable"
-            const apiActionType = serviceOptions.apiDefinition[name as unknown as keyof M.Actions<AD>];
+            // TODO TS: value should be automatically inferred as "promise" | "observable" | "subscribableLike"
+            const apiActionType = serviceOptions.apiDefinition[name as unknown as keyof AD];
 
             return apiActionType === "promise"
                 ? result$.toPromise()
-                : result$;
+                : apiActionType === "subscribableLike"
+                    ? observableToSubscribableLike(result$)
+                    : result$;
         }) as PM.Any; // TODO TS: get rid of typecasting
     };
 
@@ -133,4 +135,35 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
             );
         },
     };
+}
+
+export function observableToSubscribableLike<T>(
+    observable: Observable<T>,
+): M.SubscribableLike<T> {
+    const result: M.SubscribableLike<T> = {
+        subscribeLike(
+            // TODO TS: get rid of typecasting
+            ...args: PM.Any[]
+        ) {
+            const unsubscribable = observable.subscribe(...args);
+            return {
+                unsubscribe() {
+                    return unsubscribable.unsubscribe();
+                },
+            };
+        },
+    };
+    return result;
+}
+
+export function subscribableLikeToObservable<T>(
+    subscribableLike: M.SubscribableLike<T>,
+): Observable<T> {
+    return new Observable<T>((subscriber) => {
+        return subscribableLike.subscribeLike(
+            (value) => subscriber.next(value),
+            (error) => subscriber.error(error),
+            () => subscriber.complete(),
+        );
+    })
 }

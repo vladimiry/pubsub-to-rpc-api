@@ -69,3 +69,9 @@ export const NOTIFICATION_WRAPPER_STUB: Required<M.CallOptions<Any>>["notificati
 // then "onEventResolver" should be defined, like Electron.js case: "event" is the first argument and data args go next
 // WARN: changing this constant would be a breaking change: will force change of all custom "onEventResolver" functions
 export const ON_EVENT_LISTENER_DEFAULT_PAYLOAD_ARG_INDEX = 0;
+
+export type Impossible<K extends keyof Any> = {
+    [P in K]: never;
+};
+
+export type NoExtraProperties<T, U extends T = T> = U & Impossible<Exclude<keyof U, keyof T>>;

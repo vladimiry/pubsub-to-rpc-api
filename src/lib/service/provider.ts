@@ -72,8 +72,11 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
 
                     // TODO TS: get rid of typecasting
                     //  - just "action.apply(actionCtx, payload.args)" should work
-                    //  - no need to specify "Observable<ActionUnpackedOutput> | Promise<ActionUnpackedOutput>" type explicitly
-                    const actionResult: Observable<ActionUnpackedOutput> | Promise<ActionUnpackedOutput>
+                    //  - no need to specify "Observable | Promise | SubscribableLike" type explicitly
+                    const actionResult:
+                        | Observable<ActionUnpackedOutput>
+                        | Promise<ActionUnpackedOutput>
+                        | M.SubscribableLike<ActionUnpackedOutput>
                         = (action as PM.Any).apply(actionCtx, payload.args);
 
                     const handlers = (() => {
@@ -107,11 +110,13 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
                         };
                     })();
 
-                    const actionResult$ = ("subscribe" in actionResult && "pipe" in actionResult)
+                    const actionResult$ = ("subscribe" in actionResult)
                         ? actionResult
-                        : ("then" in actionResult && "catch" in actionResult)
-                            ? from(actionResult)
-                            : throwError(new Error("Unexpected action result type received"));
+                        : ("subscribeLike" in actionResult)
+                            ? {subscribe: actionResult.subscribeLike.bind(actionResult)}
+                            : ("then" in actionResult && "catch" in actionResult)
+                                ? from(actionResult)
+                                : throwError(new Error("Unexpected action result type received"));
 
                     subscriptions.set(
                         uid,
