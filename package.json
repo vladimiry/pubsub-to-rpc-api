@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-rpc-api",
-  "version": "5.2.0-beta.3",
+  "version": "5.2.0-beta.4",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -53,7 +53,7 @@
   "dependencies": {
     "jsan": "^3.1.13",
     "pure-uuid": "^1.6.0",
-    "serialize-error": "^5.0.0",
+    "serialize-error": "https://github.com/vladimiry-playground/serialize-error#a2c28c7f7f4ce409780ac7c6918d8ea875934a43",
     "tslib": "^1.11.0"
   },
   "devDependencies": {
