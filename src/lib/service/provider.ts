@@ -39,6 +39,7 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
                     const resolvedArgs = onEventResolver(...(listenerArgs as Exclude<ACA, void>));
                     const {payload} = resolvedArgs;
                     const {name, uid} = payload;
+                    // WARN don't put "payload.args" into "baseLogData" as it might contain sensitive/large/circular data
                     const baseLogData = JSON.stringify({name, channel: serviceOptions.channel, payloadType: payload.type, uid});
                     const unsubscribe = (logDataAppend: string = "") => {
                         const logData = baseLogData + logDataAppend;
@@ -91,21 +92,21 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
 
                         return {
                             next(value: ActionUnpackedOutput) {
+                                logger.debug(`notification.emit`, baseLogData);
                                 const responseData = payload.serialization === "jsan"
                                     ? jsan.stringify(value, null, null, {refs: true})
                                     : value;
                                 emit({...basePayloadResponse, data: responseData as typeof value});
-                                logger.debug(`notification.emit`, baseLogData);
                             },
                             error(error: Error) {
+                                logger.error(`notification.error`, baseLogData, error);
                                 emit({...basePayloadResponse, error: serializeError(error)});
                                 unsubscribe();
-                                logger.error(`notification.error`, error, baseLogData);
                             },
                             complete() {
+                                logger.debug(`notification.complete`, baseLogData);
                                 emit({...basePayloadResponse, complete: true});
                                 unsubscribe();
-                                logger.debug(`notification.complete`, baseLogData);
                             },
                         };
                     })();
