@@ -1,6 +1,6 @@
 import jsan from "jsan";
 import {Observable, Subscription, from, throwError} from "rxjs";
-import {serializeError} from "serialize-error";
+import {serializeError} from "@vladimiry/serialize-error";
 
 import * as M from "../model";
 import * as PM from "../private/model";

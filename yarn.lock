@@ -310,6 +310,13 @@
   resolved "https://registry.yarnpkg.com/@types/tcp-ping/-/tcp-ping-0.1.0.tgz#f8e02d8cfc16f511d1364889e39408896b02a99a"
   integrity sha512-Sq3km25idHcSoMFWHtqFKSs4wAgEtnP40qZ8pUVGda0V/xaCf7IBc+guFtbMJQOkheqgRYL4iXmvryjp3Wr10A==
 
+"@vladimiry/serialize-error@^5.0.0":
+  version "5.0.0"
+  resolved "https://registry.yarnpkg.com/@vladimiry/serialize-error/-/serialize-error-5.0.0.tgz#8b8e87b7e803619941ae488b19e3d6c5aa0c69f5"
+  integrity sha512-3sPlMM3POYS6mWlcESbn8KKqKArJC65DZE6mLqwbfv58LGmIBExaihGxKrkGGbwiSe6TZgeJJp9PDjJIUiLe4g==
+  dependencies:
+    type-fest "^0.8.0"
+
 acorn-jsx@^5.0.0:
   version "5.2.0"
   resolved "https://registry.yarnpkg.com/acorn-jsx/-/acorn-jsx-5.2.0.tgz#4c66069173d6fdd68ed85239fc256226182b2ebe"
@@ -4138,12 +4145,6 @@ serialize-error@^2.1.0:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/serialize-error/-/serialize-error-2.1.0.tgz#50b679d5635cdf84667bdc8e59af4e5b81d5f60a"
   integrity sha1-ULZ51WNc34Rme9yOWa9OW4HV9go=
-
-"serialize-error@https://github.com/vladimiry-playground/serialize-error#a2c28c7f7f4ce409780ac7c6918d8ea875934a43":
-  version "5.0.0"
-  resolved "https://github.com/vladimiry-playground/serialize-error#a2c28c7f7f4ce409780ac7c6918d8ea875934a43"
-  dependencies:
-    type-fest "^0.8.0"
 
 set-blocking@^2.0.0:
   version "2.0.0"
