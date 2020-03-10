@@ -33,14 +33,19 @@
     "test": "cross-env TS_NODE_PROJECT=./test/tsconfig.json ava --verbose \"./test/**/*.{spec,test}.ts\""
   },
   "ava": {
-    "compileEnhancements": false,
     "extensions": [
+      "js",
       "ts"
+    ],
+    "files": [
+      "./test/**/*.{spec,test}.{ts,js}"
     ],
     "require": [
       "ts-node/register",
       "tsconfig-paths/register"
-    ]
+    ],
+    "timeout": "120s",
+    "verbose": true
   },
   "peerDependencies": {
     "rxjs": "^6.x"
@@ -57,7 +62,7 @@
     "@types/node": "^12.12.21",
     "@types/sinon": "^7.5.1",
     "@types/tcp-ping": "^0.1.0",
-    "ava": "^1.4.1",
+    "ava": "^3.5.0",
     "cross-env": "^7.0.0",
     "husky": "^4.2.3",
     "import-sort-cli": "^6.0.0",

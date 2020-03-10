@@ -128,7 +128,7 @@ test("backend error", async (t) => {
         "method",
         {timeoutMs: 500},
         {emitter, listener: emitter},
-    )("w-456").toPromise(), `"w-456" can't be parsed to number`);
+    )("w-456").toPromise(), {message: `"w-456" can't be parsed to number`});
 });
 
 test("timeout error", async (t) => {
@@ -160,11 +160,11 @@ test("timeout error", async (t) => {
     await Promise.all([
         await t.throwsAsync(
             client(methodObservable)(inputValue).toPromise(),
-            `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
+            {message: `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`},
         ),
         await t.throwsAsync(
             client(methodPromise)(inputValue),
-            `Invocation timeout of calling "${methodPromise}" method on "${channel}" channel with ${timeoutMs}ms timeout`,
+            {message: `Invocation timeout of calling "${methodPromise}" method on "${channel}" channel with ${timeoutMs}ms timeout`},
         ),
     ]);
 
