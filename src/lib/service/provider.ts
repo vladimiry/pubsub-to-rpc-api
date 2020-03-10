@@ -1,6 +1,6 @@
 import jsan from "jsan";
 import {Observable, Subscription, from, throwError} from "rxjs";
-import {serializerr} from "serializerr";
+import {serializeError} from "serialize-error";
 
 import * as M from "../model";
 import * as PM from "../private/model";
@@ -98,7 +98,7 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
                                 logger.debug(`notification.emit`, baseLogData);
                             },
                             error(error: Error) {
-                                emit({...basePayloadResponse, error: serializerr(error)});
+                                emit({...basePayloadResponse, error: serializeError(error)});
                                 unsubscribe();
                                 logger.error(`notification.error`, error, baseLogData);
                             },

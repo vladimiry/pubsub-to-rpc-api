@@ -1,7 +1,7 @@
 import UUID from "pure-uuid";
-import deserializeError from "deserialize-error";
 import jsan from "jsan";
 import {NEVER, Observable, from, race, throwError, timer} from "rxjs";
+import {deserializeError} from "serialize-error";
 import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operators";
 
 import * as M from "../model";
