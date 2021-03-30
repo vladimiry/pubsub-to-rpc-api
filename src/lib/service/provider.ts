@@ -94,7 +94,7 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
                             next(value: ActionUnpackedOutput) {
                                 logger.debug(`notification.emit`, baseLogData);
                                 const responseData = payload.serialization === "jsan"
-                                    ? jsan.stringify(value, null, null, {refs: true})
+                                    ? jsan.stringify(value, undefined, undefined, {refs: true})
                                     : value;
                                 emit({...basePayloadResponse, data: responseData as typeof value});
                             },

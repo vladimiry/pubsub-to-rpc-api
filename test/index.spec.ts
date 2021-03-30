@@ -238,10 +238,10 @@ test("stream", async (t) => {
 });
 
 test("preserve references", async (t) => {
-    const originalJsan = await import("jsan");
+    const {parse, stringify} = await import("jsan");
     const mockedJsan = {
-        parse: sinon.spy(originalJsan, "parse"),
-        stringify: sinon.spy(originalJsan, "stringify"),
+        parse: sinon.spy(parse),
+        stringify: sinon.spy(stringify),
     };
     const {createService: createServiceMocked} = await rewiremock.around(
         () => import("lib"),
@@ -309,7 +309,7 @@ test("preserve references", async (t) => {
         t.true(directMethodCalledData.o1 === o1);
     }
 
-    t.true(mockedJsan.stringify.alwaysCalledWithExactly(expectedData, null, null, {refs: true}));
+    t.true(mockedJsan.stringify.alwaysCalledWithExactly(expectedData, undefined, undefined, {refs: true}));
     t.true(mockedJsan.parse.alwaysCalledWithExactly(expectedJsanStr));
 });
 

@@ -91,7 +91,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
                     }),
                 ),
             ).pipe(
-                takeUntil(
+                takeUntil<PM.Any>(
                     finishPromise
                         ?
                         from(finishPromise).pipe(
