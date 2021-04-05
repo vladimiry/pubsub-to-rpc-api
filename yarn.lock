@@ -354,10 +354,10 @@
   resolved "https://registry.yarnpkg.com/@types/tcp-ping/-/tcp-ping-0.1.1.tgz#ce318fb01603977358d2425449a4dc22aa450ff0"
   integrity sha512-Vw0GYa4z21OJ2oeGjIB0nRN0TgrgaG8cnVWtPrcozW9sIvWyDw9NgI7dyVfkJBZGCYRlASK6CvhqwMPZM0W8WA==
 
-"@vladimiry/import-sort-style@^0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@vladimiry/import-sort-style/-/import-sort-style-0.1.1.tgz#6ab4c03bf29f30db0f476d1b3f9737e4fb4a5da2"
-  integrity sha512-2dvvbesobix5Iqz551sjlxJWvZqTeiV69jbrsZRPVJJ1HXmH9igbmicuDPhIY+Tn4YrKPM/qdoEA1DezPJ796A==
+"@vladimiry/import-sort-style@^0.1.4":
+  version "0.1.4"
+  resolved "https://registry.yarnpkg.com/@vladimiry/import-sort-style/-/import-sort-style-0.1.4.tgz#7b666d82ad87b141b7468b35978878a5b5340f13"
+  integrity sha512-VRRwbUGJyTV6AKM74TA0eXnog/4MZyXA9lVAoROtw1HZZnw5Swy0i4X5l008XJpS/joEhb7BVO4IQPoW99TM5w==
 
 acorn-jsx@^5.0.0:
   version "5.3.1"
