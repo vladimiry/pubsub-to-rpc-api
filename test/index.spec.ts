@@ -4,7 +4,7 @@ import sinon from "sinon";
 import test from "ava";
 import {EventEmitter} from "events";
 import {bufferCount, delay, map, take} from "rxjs/operators";
-import {from, interval, merge, of, throwError} from "rxjs";
+import {from, interval, lastValueFrom, merge, of, throwError} from "rxjs";
 
 import * as PM from "lib/private/model";
 import {ActionType, createService, subscribableLikeToObservable} from "lib";
@@ -60,20 +60,22 @@ test("calling 3 methods", async (t) => {
         },
     );
 
-    await merge(
-        from(client("method1")(method1Input)),
-        client("method2")(method2Input),
-        subscribableLikeToObservable(
-            client("method3")(method3Input),
+    await lastValueFrom(
+        merge(
+            from(client("method1")(method1Input)),
+            client("method2")(method2Input),
+            subscribableLikeToObservable(
+                client("method3")(method3Input),
+            ),
         ),
-    ).toPromise();
+    );
 
     t.true(clientEmitterSpy.calledWithExactly(
         channel,
         sinon.match((request: PM.PayloadRequest<typeof apiDefinition>) => {
             const uid = Boolean(request.uid.length);
             const type = request.type === "request";
-            const name = request.name === "method1" || request.name === "method2" || request.name === "method3";
+            const name = request.name === "method1" || request.name === "method2"
             const data = "args" in request
                 ? (
                     (request.name === "method1" && request.args[0] === method1Input)
@@ -124,11 +126,16 @@ test("backend error", async (t) => {
         emitter,
     );
 
-    await t.throwsAsync(service.call(
-        "method",
-        {timeoutMs: 500},
-        {emitter, listener: emitter},
-    )("w-456").toPromise(), {message: `"w-456" can't be parsed to number`});
+    await t.throwsAsync(
+        lastValueFrom(
+            service.call(
+                "method",
+                {timeoutMs: 500},
+                {emitter, listener: emitter},
+            )("w-456"),
+        ),
+        {message: `"w-456" can't be parsed to number`},
+    );
 });
 
 test("timeout error", async (t) => {
@@ -159,7 +166,9 @@ test("timeout error", async (t) => {
 
     await Promise.all([
         await t.throwsAsync(
-            client(methodObservable)(inputValue).toPromise(),
+            lastValueFrom(
+                client(methodObservable)(inputValue),
+            ),
             {message: `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`},
         ),
         await t.throwsAsync(
@@ -169,7 +178,9 @@ test("timeout error", async (t) => {
     ]);
 
     const [res1, res2] = await Promise.all([
-        await client(methodObservable, {timeoutMs: delayMs * 1.2})(inputValue).toPromise(),
+        await lastValueFrom(
+            client(methodObservable, {timeoutMs: delayMs * 1.2})(inputValue),
+        ),
         await client(methodPromise, {timeoutMs: delayMs * 1.2})(inputValue),
     ]);
     t.is(String(inputValue), res1);
@@ -188,12 +199,14 @@ test("calling method without arguments", async (t) => {
 
     service.register(
         {
-            methodObservable: () => of(),
+            methodObservable: () => of(void 0),
             methodPromise: async () => {}, // tslint:disable-line:no-empty
         },
         em,
     );
-    await service.call("methodObservable", {timeoutMs: 500}, {listener: em, emitter: em})().toPromise();
+    await lastValueFrom(
+        service.call("methodObservable", {timeoutMs: 500}, {listener: em, emitter: em})(),
+    );
 
     t.true(emitSpy.calledWithExactly(
         channel,
@@ -230,9 +243,10 @@ test("stream", async (t) => {
     const count = 5;
     const delayMs = 250;
     const streamMethod = service.call("stream", {timeoutMs: delayMs * count * 1.3}, {listener: em, emitter: em});
-    const actual = await streamMethod({start, count, delayMs})
-        .pipe(bufferCount(count))
-        .toPromise();
+    const actual = await lastValueFrom(
+        streamMethod({start, count, delayMs})
+            .pipe(bufferCount(count)),
+    );
     const expected = new Array(count).fill(0).map((...[, i]) => start + i);
     t.deepEqual(expected, actual);
 });
@@ -285,7 +299,9 @@ test("preserve references", async (t) => {
 
     t.is(0, mockedJsan.parse.callCount);
     t.is(0, mockedJsan.stringify.callCount);
-    const noJsanCalledData = await service.call("method", {timeoutMs: 100}, emOpts)(true).toPromise();
+    const noJsanCalledData = await lastValueFrom(
+        service.call("method", {timeoutMs: 100}, emOpts)(true),
+    );
     t.is(0, mockedJsan.parse.callCount);
     t.is(0, mockedJsan.stringify.callCount);
     t.deepEqual(expectedData, noJsanCalledData);
@@ -293,7 +309,9 @@ test("preserve references", async (t) => {
         t.false(noJsanCalledData.o1 === o1);
     }
 
-    const calledWithCallerData = await jsanCaller("method")(false).toPromise();
+    const calledWithCallerData = await lastValueFrom(
+        jsanCaller("method")(false),
+    );
     t.is(1, mockedJsan.parse.callCount);
     t.is(1, mockedJsan.stringify.callCount);
     t.deepEqual(expectedData, calledWithCallerData);
@@ -301,7 +319,9 @@ test("preserve references", async (t) => {
         t.true(calledWithCallerData.o1 === o1);
     }
 
-    const directMethodCalledData = await service.call("method", {timeoutMs: 100, serialization: "jsan"}, emOpts)(false).toPromise();
+    const directMethodCalledData = await lastValueFrom(
+        service.call("method", {timeoutMs: 100, serialization: "jsan"}, emOpts)(false),
+    );
     t.is(2, mockedJsan.parse.callCount);
     t.is(2, mockedJsan.stringify.callCount);
     t.deepEqual(expectedData, directMethodCalledData);

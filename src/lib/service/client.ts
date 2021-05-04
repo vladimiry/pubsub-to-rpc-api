@@ -1,6 +1,6 @@
 import UUID from "pure-uuid";
 import jsan from "jsan";
-import {NEVER, Observable, from, race, throwError, timer} from "rxjs";
+import {NEVER, Observable, from, lastValueFrom, race, throwError, timer} from "rxjs";
 import {deserializeError} from "serialize-error";
 import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operators";
 
@@ -8,6 +8,37 @@ import * as M from "../model";
 import * as PM from "../private/model";
 import {addEventListener} from "./client-observables-cache";
 import {curryLogger, curryOwnFunctionMembers} from "../private/util";
+
+export function observableToSubscribableLike<T>(
+    observable: Observable<T>,
+): M.SubscribableLike<T> {
+    const result: M.SubscribableLike<T> = {
+        subscribeLike(
+            // TODO TS: get rid of typecasting
+            ...args: PM.Any[]
+        ) {
+            const unsubscribable = observable.subscribe(...args);
+            return {
+                unsubscribe() {
+                    return unsubscribable.unsubscribe();
+                },
+            };
+        },
+    };
+    return result;
+}
+
+export function subscribableLikeToObservable<T>(
+    subscribableLike: M.SubscribableLike<T>,
+): Observable<T> {
+    return new Observable<T>((subscriber) => {
+        return subscribableLike.subscribeLike({
+            next: subscriber.next.bind(subscriber),
+            error: subscriber.error.bind(subscriber),
+            complete: subscriber.complete.bind(subscriber),
+        });
+    })
+}
 
 export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends PM.DefACA | void = void>(
     serviceOptions: M.CreateServiceOptions<AD>,
@@ -115,7 +146,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
             const apiActionType = serviceOptions.apiDefinition[name as unknown as keyof AD];
 
             return apiActionType === "promise"
-                ? result$.toPromise()
+                ? lastValueFrom(result$)
                 : apiActionType === "subscribableLike"
                     ? observableToSubscribableLike(result$)
                     : result$;
@@ -135,35 +166,4 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
             );
         },
     };
-}
-
-export function observableToSubscribableLike<T>(
-    observable: Observable<T>,
-): M.SubscribableLike<T> {
-    const result: M.SubscribableLike<T> = {
-        subscribeLike(
-            // TODO TS: get rid of typecasting
-            ...args: PM.Any[]
-        ) {
-            const unsubscribable = observable.subscribe(...args);
-            return {
-                unsubscribe() {
-                    return unsubscribable.unsubscribe();
-                },
-            };
-        },
-    };
-    return result;
-}
-
-export function subscribableLikeToObservable<T>(
-    subscribableLike: M.SubscribableLike<T>,
-): Observable<T> {
-    return new Observable<T>((subscriber) => {
-        return subscribableLike.subscribeLike(
-            (value) => subscriber.next(value),
-            (error) => subscriber.error(error),
-            () => subscriber.complete(),
-        );
-    })
 }

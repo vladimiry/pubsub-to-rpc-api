@@ -1,5 +1,6 @@
 import test, {ExecutionContext, ImplementationResult} from "ava";
 import {bufferCount} from "rxjs/operators";
+import {lastValueFrom} from "rxjs";
 
 import {API_IMPLEMENTATION} from ".";
 
@@ -14,10 +15,11 @@ const apiActionTests: Record<keyof typeof API_IMPLEMENTATION, (t: ExecutionConte
             {address: "1.1.1.1"},
         ];
 
-        const results = await API_IMPLEMENTATION
-            .httpPing(...entries)
-            .pipe(bufferCount(entries.length))
-            .toPromise();
+        const results = await lastValueFrom(
+            API_IMPLEMENTATION
+                .httpPing(entries)
+                .pipe(bufferCount(entries.length)),
+        );
 
         // type checking like assertions implemented below are not really needed since TypeScript handles the type checking
 

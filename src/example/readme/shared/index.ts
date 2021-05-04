@@ -6,12 +6,8 @@ import {ActionType, ScanService, createService} from "lib";
 
 const apiDefinition = {
     evaluateMathExpression: ActionType.Promise<string, number>(),
-    httpPing: ActionType.Observable<Array<{
-        address?: string;
-        port?: number;
-        attempts?: number;
-        timeout?: number;
-    }>, { domain: string } & ({ time: number } | { error: string })>(),
+    httpPing: ActionType.Observable<Array<{ address?: string; port?: number; attempts?: number; timeout?: number; }>,
+        { domain: string } & ({ time: number } | { error: string })>(),
 };
 
 export const API_SERVICE = createService({

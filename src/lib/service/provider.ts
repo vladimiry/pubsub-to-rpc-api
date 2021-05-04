@@ -119,10 +119,7 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
                                 ? from(actionResult)
                                 : throwError(new Error("Unexpected action result type received"));
 
-                    subscriptions.set(
-                        uid,
-                        actionResult$.subscribe(handlers.next, handlers.error, handlers.complete),
-                    );
+                    subscriptions.set(uid, actionResult$.subscribe(handlers));
 
                     logger.debug(`subscription added, subscriptions count: ${subscriptions.size}`, baseLogData);
                 },

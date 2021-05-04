@@ -15,4 +15,5 @@ jobs:
           yarn --version
           npx envinfo
           yarn --pure-lockfile --network-timeout 60000
-          yarn run lib
+          yarn run example
+          yarn run example:test

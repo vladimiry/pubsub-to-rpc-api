@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-rpc-api",
-  "version": "6.0.1",
+  "version": "7.0.0-alpha2",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -19,7 +19,7 @@
     "example": "npm-run-all lib example:run",
     "example:compile": "tsc --listEmittedFiles -p ./src/example/tsconfig.json --outDir ./output",
     "example:compile:watch": "tsc -w -p ./src/example/tsconfig.json --outDir ./output",
-    "example:run": "cross-env TS_NODE_PROJECT=./src/example/tsconfig.json ts-node -r tsconfig-paths/register src/example/readme",
+    "example:run": "cross-env TS_NODE_PROJECT=./src/example/tsconfig.json ts-node -r tsconfig-paths/register ./src/example/readme",
     "example:test": "cross-env TS_NODE_PROJECT=./src/example/tsconfig.json ava --verbose \"./src/example/**/*.{spec,test}.ts\"",
     "lib": "npm-run-all lib:clean lint lib:compile test",
     "lib:clean": "rimraf ./lib",
@@ -39,7 +39,8 @@
       "ts"
     ],
     "files": [
-      "./test/**/*.{spec,test}.{ts,js}"
+      "./test/**/*.{spec,test}.{ts,js}",
+      "./src/example/**/*.{spec,test}.{ts,js}"
     ],
     "require": [
       "ts-node/register",
@@ -48,12 +49,10 @@
     "timeout": "120s",
     "verbose": true
   },
-  "peerDependencies": {
-    "rxjs": "^6.x"
-  },
   "dependencies": {
     "jsan": "^3.1.13",
     "pure-uuid": "^1.6.2",
+    "rxjs": "^7.0.0",
     "serialize-error": "^8.0.1",
     "tslib": "^2.1.0"
   },
@@ -69,7 +68,6 @@
     "husky": "^6.0.0",
     "import-sort-cli": "^6.0.0",
     "import-sort-parser-typescript": "^6.0.0",
-    "install-peers": "^1.0.3",
     "lint-staged": "^10.5.4",
     "maths.ts": "^0.0.8",
     "npm-run-all": "^4.1.5",
@@ -87,7 +85,7 @@
   },
   "resolutions": {
     "*/**/tslib": "^2.x",
-    "import-sort-cli/yargs": "^16.x",
+    "import-sort-cli/yargs": "^17.x",
     "import-sort-parser-typescript/typescript": "^4.x"
   }
 }

@@ -18,8 +18,9 @@
     paths
     */
     "lib": [
-      "es5",
-      "es2015"
+      "dom",
+      "es2015",
+      "es5"
     ],
     "baseUrl": ".",
     "outDir": "./lib",
