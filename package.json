@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-rpc-api",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -52,16 +52,16 @@
   "dependencies": {
     "jsan": "^3.1.13",
     "pure-uuid": "^1.6.2",
-    "rxjs": "^7.0.0",
+    "rxjs": "^7.1.0",
     "serialize-error": "^8.0.1",
     "tslib": "^2.1.0"
   },
   "devDependencies": {
-    "@types/bluebird": "^3.5.33",
+    "@types/bluebird": "^3.5.35",
     "@types/jsan": "3.1.0",
     "@types/node": "^14.14.37",
-    "@types/sinon": "^10.0.0",
-    "@types/tcp-ping": "^0.1.1",
+    "@types/sinon": "^10.0.2",
+    "@types/tcp-ping": "^0.1.2",
     "@vladimiry/import-sort-style": "^0.1.4",
     "ava": "^3.15.0",
     "cross-env": "^7.0.3",
@@ -73,19 +73,20 @@
     "npm-run-all2": "^5.0.2",
     "rewiremock": "^3.14.3",
     "rimraf": "^3.0.2",
-    "sinon": "^10.0.0",
+    "sinon": "^11.1.1",
     "tcp-ping": "^0.1.1",
-    "ts-node": "^9.1.1",
+    "ts-node": "^10.0.0",
     "tsconfig-paths": "^3.9.0",
     "tslint": "^6.1.3",
     "tslint-consistent-codestyle": "^1.16.0",
     "tslint-eslint-rules": "^5.4.0",
     "tslint-rules-bunch": "^1.0.0",
-    "typescript": "^4.2.3"
+    "typescript": "^4.3.2"
   },
   "resolutions": {
     "*/**/tslib": "^2.x",
+    "*/**/typescript": "^4.x",
     "import-sort-cli/yargs": "^17.x",
-    "import-sort-parser-typescript/typescript": "^4.x"
+    "import-sort-cli/globby": "^11.x"
   }
 }
