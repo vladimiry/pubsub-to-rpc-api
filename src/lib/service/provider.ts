@@ -34,7 +34,7 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
             logger.info("register()");
 
             const subscriptions: Map<PM.PayloadUid, Pick<Subscription, "unsubscribe">> = new Map();
-            const listenerSubscriptionArgs: Readonly<PM.Arguments<typeof eventEmitter.on>> = [
+            const listenerSubscriptionArgs: Readonly<Parameters<typeof eventEmitter.on>> = [
                 serviceOptions.channel,
                 (...listenerArgs) => {
                     const resolvedArgs = onEventResolver(...(listenerArgs as Exclude<ACA, void>));
@@ -119,7 +119,7 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
                             ? {subscribe: actionResult.subscribeLike.bind(actionResult)}
                             : ("then" in actionResult && "catch" in actionResult)
                                 ? from(actionResult)
-                                : throwError(new Error("Unexpected action result type received"));
+                                : throwError(() => new Error("Unexpected action result type received"));
 
                     subscriptions.set(uid, actionResult$.subscribe(handlers));
 

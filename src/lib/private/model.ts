@@ -6,9 +6,6 @@ export type Any = any; // tslint:disable-line:no-any
 
 export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
 
-export type Arguments<F extends (...x: Any[]) => Any> =
-    F extends (...args: infer A) => Any ? A : never;
-
 export type Unpacked<T> =
     T extends Promise<infer U2> ? U2 :
         T extends Observable<infer U3> ? U3 :
@@ -28,7 +25,7 @@ interface PayloadBase<AD extends M.ApiDefinition<AD>> {
 
 export type PayloadRequest<AD extends M.ApiDefinition<AD>> = PayloadBase<AD>
     & (
-    | ({ type: "request"; args: Arguments<M.Actions<AD>[keyof M.Actions<AD>]>; } & Pick<M.CallOptions<AD>, "serialization">)
+    | ({ type: "request"; args: Parameters<M.Actions<AD>[keyof M.Actions<AD>]>; } & Pick<M.CallOptions<AD>, "serialization">)
     | ({ type: "unsubscribe-request"; reason: "finish promise" | "timeout"; })
     );
 

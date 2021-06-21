@@ -1,19 +1,18 @@
 import UUID from "pure-uuid";
 import jsan from "jsan";
-import {NEVER, Observable, from, lastValueFrom, race, throwError, timer} from "rxjs";
+import {NEVER, Observable, Subject, from, lastValueFrom, race, throwError, timer} from "rxjs";
 import {Packr} from "msgpackr";
 import {deserializeError} from "serialize-error";
 import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operators";
 
 import * as M from "../model";
 import * as PM from "../private/model";
-import {addEventListener} from "./client-observables-cache";
 import {curryLogger, curryOwnFunctionMembers} from "../private/util";
 
 export function observableToSubscribableLike<T>(
     observable: Observable<T>,
 ): M.SubscribableLike<T> {
-    const result: M.SubscribableLike<T> = {
+    return {
         subscribeLike(
             // TODO TS: get rid of typecasting
             ...args: PM.Any[]
@@ -26,7 +25,6 @@ export function observableToSubscribableLike<T>(
             };
         },
     };
-    return result;
 }
 
 export function subscribableLikeToObservable<T>(
@@ -72,7 +70,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
         type Action = M.Actions<AD>[keyof M.Actions<AD>]; // TODO TS: use "M.Actions<AD>[typeof name]"
         type ActionOutput = PM.Unpacked<ReturnType<Action>>;
 
-        return ((...actionArgs: PM.Arguments<Action>) => {
+        return ((...actionArgs: Parameters<Action>) => {
             const {emitter, listener} = typeof emitters === "function" ? emitters() : emitters;
             const request: Readonly<PM.PayloadRequest<AD>> = {
                 uid: new UUID(4).format(),
@@ -81,32 +79,47 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
                 name: name as unknown as keyof M.Actions<AD>, // TODO TS: get rid of typecasting
                 args: actionArgs,
             } as const;
-            const emitUnsubscribeSignalToProvider
-                = ({reason}: Pick<Extract<PM.PayloadRequest<AD>, { type: "unsubscribe-request" }>, "reason">) => {
+            const emitUnsubscribeSignalToProvider = (
+                {reason}: Pick<Extract<PM.PayloadRequest<AD>, { type: "unsubscribe-request" }>, "reason">,
+            ) => {
                 const payload: Extract<PM.PayloadRequest<AD>, { type: "unsubscribe-request" }>
                     = {type: "unsubscribe-request", uid: request.uid, name: request.name, reason};
                 emitter.emit(emitChannel, payload);
                 logger.debug(`"unsubscribe-request" signal sent to provider, source: "${reason}"`, JSON.stringify(payload));
             };
-            const observableBundle = addEventListener(listener, listenChannel, {logger, notificationWrapper});
+            const observableBundle = (() => {
+                type Listener = Parameters<M.EventListener["on"] & M.EventListener["removeListener"]>[1];
+                const subject$ = new Subject<Parameters<Listener>>();
+                const subscriptionArgs = [
+                    listenChannel,
+                    (...listenerArgs: PM.Unpacked<typeof subject$>) => {
+                        notificationWrapper(() => subject$.next(listenerArgs));
+                    },
+                ] as const;
+                listener.on(...subscriptionArgs);
+                return {
+                    observable$: subject$.asObservable(),
+                    removeEventListener() {
+                        listener.removeListener(...subscriptionArgs);
+                        subject$.complete();
+                        // subject$.unsubscribe();
+                        // (subject$ as unknown) = null;
+                        (subscriptionArgs as unknown) = null;
+                    },
+                } as const;
+            })();
             const result$: Observable<ActionOutput> = race(
                 timer(timeoutMs).pipe(
                     mergeMap(() => {
                         emitUnsubscribeSignalToProvider({reason: "timeout"});
-                        return throwError(
-                            new Error(
-                                `Invocation timeout of calling "${name}" method on "${emitChannel}" channel with ${timeoutMs}ms timeout`,
-                            ),
-                        );
+                        return throwError(() => new Error(
+                            `Invocation timeout of calling "${name}" method on "${emitChannel}" channel with ${timeoutMs}ms timeout`,
+                        ));
                     }),
                 ),
                 observableBundle.observable$.pipe(
-                    map(({listenerArgs}) => {
-                        return onEventResolver(...(listenerArgs as Exclude<ACA, void>)).payload;
-                    }),
-                    filter(({uid, type}) => {
-                        return uid === request.uid && type === "response";
-                    }),
+                    map((listenerArgs) => onEventResolver(...(listenerArgs as Exclude<ACA, void>)).payload),
+                    filter(({uid, type}) => uid === request.uid && type === "response"),
                     takeWhile((payload) => !("complete" in payload && payload.complete)),
                     mergeMap((payload) => {
                         if ("data" in payload) {
@@ -122,7 +135,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
                             ];
                         }
                         if ("error" in payload) {
-                            return throwError(deserializeError(payload.error));
+                            return throwError(() => deserializeError(payload.error));
                         }
                         return [void 0]; // "payload.data" is "undefined" ("void" action response type)
                     }),
@@ -130,12 +143,12 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
             ).pipe(
                 takeUntil<PM.Any>(
                     finishPromise
-                        ?
-                        from(finishPromise).pipe(
-                            finalize(() => emitUnsubscribeSignalToProvider({reason: "finish promise"})),
+                        ? (
+                            from(finishPromise).pipe(
+                                finalize(() => emitUnsubscribeSignalToProvider({reason: "finish promise"})),
+                            )
                         )
-                        :
-                        NEVER,
+                        : NEVER,
                 ),
                 finalize(() => {
                     observableBundle.removeEventListener();
@@ -143,9 +156,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
                 }),
             );
 
-            setTimeout(() => {
-                emitter.emit(emitChannel, request);
-            }, 0);
+            setImmediate(() => emitter.emit(emitChannel, request));
 
             // TODO TS: get rid of typecasting
             // TODO TS: value should be automatically inferred as "promise" | "observable" | "subscribableLike"

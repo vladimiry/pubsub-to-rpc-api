@@ -121,7 +121,9 @@ test("backend error", async (t) => {
 
     service.register(
         {
-            method: (input) => isNaN(Number(input)) ? throwError(new Error(`"${input}" can't be parsed to number`)) : of(Number(input)),
+            method: (input) => isNaN(Number(input))
+                ? throwError(() => new Error(`"${input}" can't be parsed to number`))
+                : of(Number(input)),
         },
         emitter,
     );
@@ -154,7 +156,7 @@ test("timeout error", async (t) => {
         },
     });
     const client = service.caller({emitter, listener: emitter}, {timeoutMs});
-    const actions: PM.Arguments<typeof service.register>[0] = {
+    const actions: Parameters<typeof service.register>[0] = {
         [methodObservable]: (arg1) => of(String(arg1)).pipe(delay(delayMs)),
         [methodPromise]: async (arg1) => {
             await new Promise((resolve) => setTimeout(resolve, delayMs));

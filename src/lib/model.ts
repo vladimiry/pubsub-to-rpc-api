@@ -78,7 +78,7 @@ export type ScanService<I extends ({
     ? { [d in RN]: (...args: PM.Any[]) => PM.Any }
     : { [d in RN]: (...args: PM.Any[]) => PM.Any },
     RN extends string = "register",
-    API extends PM.Arguments<I[RN]>[0] = PM.Arguments<I[RN]>[0]> = ScanResult<API>;
+    API extends Parameters<I[RN]>[0] = Parameters<I[RN]>[0]> = ScanResult<API>;
 
 export type ActionContext<ACA extends PM.DefACA = PM.DefACA> = Readonly<{ args: Readonly<ACA> }>;
 
