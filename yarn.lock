@@ -2624,10 +2624,30 @@ ms@^2.1.1, ms@^2.1.3:
   resolved "https://registry.yarnpkg.com/ms/-/ms-2.1.3.tgz#574c8138ce1d2b5861f0b44579dbadd60c6615b2"
   integrity sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==
 
+msgpackr-extract@^1.0.11:
+  version "1.0.11"
+  resolved "https://registry.yarnpkg.com/msgpackr-extract/-/msgpackr-extract-1.0.11.tgz#68dd2e5da3f45788624e44190a25730c9f455d90"
+  integrity sha512-qE31O3AX4zUxGcf0eIxYF1h2n6FnJHmsfiT5M/aAeGmHQmiWJCkqeIDXGD0trDFQ7/tb8KBN69LLBQpon2WQnQ==
+  dependencies:
+    nan "^2.14.2"
+    node-gyp-build "^4.2.3"
+
+msgpackr@^1.3.4:
+  version "1.3.4"
+  resolved "https://registry.yarnpkg.com/msgpackr/-/msgpackr-1.3.4.tgz#a096f154c9954e847ea97603aec06ec439347a1a"
+  integrity sha512-SDON2iGdLNU4fb9DrxR3reL2wNf1msz5X/bBZuBVfXoaluQL2LYLzicpn7HlajVj5sHdaM8TGZ1QR3XVF4lGXA==
+  optionalDependencies:
+    msgpackr-extract "^1.0.11"
+
 mute-stream@0.0.7:
   version "0.0.7"
   resolved "https://registry.yarnpkg.com/mute-stream/-/mute-stream-0.0.7.tgz#3075ce93bc21b8fab43e1bc4da7e8115ed1e7bab"
   integrity sha1-MHXOk7whuPq0PhvE2n6BFe0ee6s=
+
+nan@^2.14.2:
+  version "2.14.2"
+  resolved "https://registry.yarnpkg.com/nan/-/nan-2.14.2.tgz#f5376400695168f4cc694ac9393d0c9585eeea19"
+  integrity sha512-M2ufzIiINKCuDfBSAUr1vWQ+vuVcA9kqx8JJUsbQi6yf1uGRyb7HfpdfUr5qLXf3B/t8dPvcjhKMmlfnP47EzQ==
 
 natural-compare@^1.4.0:
   version "1.4.0"
@@ -2649,6 +2669,11 @@ nise@^5.1.0:
     "@sinonjs/text-encoding" "^0.7.1"
     just-extend "^4.0.2"
     path-to-regexp "^1.7.0"
+
+node-gyp-build@^4.2.3:
+  version "4.2.3"
+  resolved "https://registry.yarnpkg.com/node-gyp-build/-/node-gyp-build-4.2.3.tgz#ce6277f853835f718829efb47db20f3e4d9c4739"
+  integrity sha512-MN6ZpzmfNCRM+3t57PTJHgHyw/h4OWnZ6mR8P5j/uZtqQr46RRuDE/P+g3n0YR/AiYXeWixZZzaip77gdICfRg==
 
 node-libs-browser@^2.1.0:
   version "2.2.1"

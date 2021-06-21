@@ -40,7 +40,7 @@ export interface CallOptions<AD extends ApiDefinition<AD>, ACA extends PM.DefACA
     finishPromise?: Promise<PM.Any>;
     listenChannel?: string;
     notificationWrapper?: <R extends PM.Any>(fn: (...args: PM.Any[]) => R) => R;
-    serialization?: "jsan";
+    serialization?: "jsan" | "msgpackr";
     onEventResolver?: ClientOnEventResolver<AD, ACA>;
     logger?: Logger;
 }

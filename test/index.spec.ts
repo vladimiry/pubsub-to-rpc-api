@@ -251,7 +251,7 @@ test("stream", async (t) => {
     t.deepEqual(expected, actual);
 });
 
-test("preserve references", async (t) => {
+test("preserve references (jsan)", async (t) => {
     const {parse, stringify} = await import("jsan");
     const mockedJsan = {
         parse: sinon.spy(parse),
@@ -281,7 +281,7 @@ test("preserve references", async (t) => {
     const service = createServiceMocked({channel, apiDefinition});
     const em = new EventEmitter();
     const emOpts = {listener: em, emitter: em};
-    const jsanCaller = service.caller(emOpts, {timeoutMs: 500, serialization: "jsan"});
+    const structureCloningCaller = service.caller(emOpts, {timeoutMs: 500, serialization: "jsan"});
     const expectedDataO1 = {n: 123, o: {s: "345"}};
     const expectedData = {o1: expectedDataO1, o1_list: [expectedDataO1, expectedDataO1, expectedDataO1]};
     // tslint:disable-next-line:max-line-length
@@ -299,18 +299,18 @@ test("preserve references", async (t) => {
 
     t.is(0, mockedJsan.parse.callCount);
     t.is(0, mockedJsan.stringify.callCount);
-    const noJsanCalledData = await lastValueFrom(
+    const noStructureCloningCalledData = await lastValueFrom(
         service.call("method", {timeoutMs: 100}, emOpts)(true),
     );
     t.is(0, mockedJsan.parse.callCount);
     t.is(0, mockedJsan.stringify.callCount);
-    t.deepEqual(expectedData, noJsanCalledData);
-    for (const o1 of noJsanCalledData.o1_list) {
-        t.false(noJsanCalledData.o1 === o1);
+    t.deepEqual(expectedData, noStructureCloningCalledData);
+    for (const o1 of noStructureCloningCalledData.o1_list) {
+        t.false(noStructureCloningCalledData.o1 === o1);
     }
 
     const calledWithCallerData = await lastValueFrom(
-        jsanCaller("method")(false),
+        structureCloningCaller("method")(false),
     );
     t.is(1, mockedJsan.parse.callCount);
     t.is(1, mockedJsan.stringify.callCount);
@@ -331,6 +331,63 @@ test("preserve references", async (t) => {
 
     t.true(mockedJsan.stringify.alwaysCalledWithExactly(expectedData, undefined, undefined, {refs: true}));
     t.true(mockedJsan.parse.alwaysCalledWithExactly(expectedJsanStr));
+});
+
+test("preserve references (msgpackr)", async (t) => {
+    interface O1 {
+        n: number;
+        o: { s: string };
+    }
+
+    interface Output {
+        o1: O1;
+        o1_list: O1[];
+    }
+
+    const apiDefinition = {
+        method: ActionType.Observable<boolean, Output>(),
+    };
+    const channel = randomStr();
+    const service = createService({channel, apiDefinition});
+    const em = new EventEmitter();
+    const emOpts = {listener: em, emitter: em};
+    const structureCloningCaller = service.caller(emOpts, {timeoutMs: 500, serialization: "msgpackr"});
+    const expectedDataO1 = {n: 123, o: {s: "345"}};
+    const expectedData = {o1: expectedDataO1, o1_list: [expectedDataO1, expectedDataO1, expectedDataO1]};
+
+    service.register({
+        method: (clone) => {
+            return of(
+                clone
+                    ? JSON.parse(JSON.stringify(expectedData))
+                    : expectedData,
+            );
+        },
+    }, em);
+
+    const noStructureCloningCalledData = await lastValueFrom(
+        service.call("method", {timeoutMs: 100}, emOpts)(true),
+    );
+    t.deepEqual(expectedData, noStructureCloningCalledData);
+    for (const o1 of noStructureCloningCalledData.o1_list) {
+        t.false(noStructureCloningCalledData.o1 === o1);
+    }
+
+    const calledWithCallerData = await lastValueFrom(
+        structureCloningCaller("method")(false),
+    );
+    t.deepEqual(expectedData, calledWithCallerData);
+    for (const o1 of calledWithCallerData.o1_list) {
+        t.true(calledWithCallerData.o1 === o1);
+    }
+
+    const directMethodCalledData = await lastValueFrom(
+        service.call("method", {timeoutMs: 100, serialization: "msgpackr"}, emOpts)(false),
+    );
+    t.deepEqual(expectedData, directMethodCalledData);
+    for (const o1 of directMethodCalledData.o1_list) {
+        t.true(directMethodCalledData.o1 === o1);
+    }
 });
 
 function randomStr(): string {

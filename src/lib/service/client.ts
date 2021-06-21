@@ -1,6 +1,7 @@
 import UUID from "pure-uuid";
 import jsan from "jsan";
 import {NEVER, Observable, from, lastValueFrom, race, throwError, timer} from "rxjs";
+import {Packr} from "msgpackr";
 import {deserializeError} from "serialize-error";
 import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operators";
 
@@ -112,7 +113,12 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
                             return [
                                 serialization === "jsan"
                                     ? jsan.parse(payload.data as unknown as string)
-                                    : payload.data,
+                                    : (
+                                        // TODO cache/reuse "msgpackr.Packr" instance
+                                        serialization === "msgpackr"
+                                            ? new Packr({structuredClone: true}).unpack(payload.data as unknown as Buffer)
+                                            : payload.data
+                                    ),
                             ];
                         }
                         if ("error" in payload) {

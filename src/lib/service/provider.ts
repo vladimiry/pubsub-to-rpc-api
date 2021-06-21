@@ -1,5 +1,6 @@
 import jsan from "jsan";
 import {Observable, Subscription, from, throwError} from "rxjs";
+import {Packr} from "msgpackr";
 import {serializeError} from "serialize-error";
 
 import * as M from "../model";
@@ -81,21 +82,22 @@ export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends
                         = (action as PM.Any).apply(actionCtx, payload.args);
 
                     const handlers = (() => {
-                        const emit = (() => {
-                            const {emitter} = resolvedArgs || {emitter: eventEmitter};
-                            return (payloadResponse: PM.PayloadResponse<AD>) => {
-                                emitter.emit(serviceOptions.channel, payloadResponse);
-                            };
-                        })();
+                        const emit = (payloadResponse: PM.PayloadResponse<AD>) => {
+                            (resolvedArgs?.emitter ?? eventEmitter).emit(serviceOptions.channel, payloadResponse);
+                        };
                         const basePayloadResponse: Readonly<Pick<PM.PayloadResponse<AD>, "uid" | "name" | "type">>
                             = {type: "response", uid, name};
 
                         return {
                             next(value: ActionUnpackedOutput) {
                                 logger.debug(`notification.emit`, baseLogData);
-                                const responseData = payload.serialization === "jsan"
+                                const {serialization} = payload;
+                                const responseData = serialization === "jsan"
                                     ? jsan.stringify(value, undefined, undefined, {refs: true})
-                                    : value;
+                                    : serialization === "msgpackr"
+                                        // TODO cache/reuse "msgpackr.Packr" instance
+                                        ? new Packr({structuredClone: true}).pack(value)
+                                        : value;
                                 emit({...basePayloadResponse, data: responseData as typeof value});
                             },
                             error(error: Error) {
