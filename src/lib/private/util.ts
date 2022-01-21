@@ -1,4 +1,4 @@
-import * as M from "./../model";
+import * as M from "../model";
 import * as PM from "./model";
 
 export function curryOwnFunctionMembers<T extends object | ((...a: PM.Any[]) => PM.Any)>(

@@ -1,10 +1,10 @@
-import test, {ExecutionContext, ImplementationResult} from "ava";
 import {bufferCount} from "rxjs/operators";
 import {lastValueFrom} from "rxjs";
+import test, {ExecutionContext} from "ava";
 
-import {API_IMPLEMENTATION} from ".";
+import {API_IMPLEMENTATION} from "./";
 
-const apiActionTests: Record<keyof typeof API_IMPLEMENTATION, (t: ExecutionContext) => ImplementationResult> = {
+const apiActionTests: Record<keyof typeof API_IMPLEMENTATION, (t: ExecutionContext) => void> = {
     evaluateMathExpression: async (t) => {
         t.is(25, await API_IMPLEMENTATION.evaluateMathExpression("12 * 2 + 1"));
     },

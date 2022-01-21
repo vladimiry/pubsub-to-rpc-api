@@ -2,7 +2,7 @@
 // but only API definition and service instance creating
 // as this file is supposed to be shared between provider and client implementations
 
-import {ActionType, ScanService, createService} from "lib";
+import {ActionType, createService, ScanService} from "lib";
 
 const apiDefinition = {
     evaluateMathExpression: ActionType.Promise<string, number>(),

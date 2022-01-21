@@ -1,11 +1,11 @@
+import {from, Observable, Subscription, throwError} from "rxjs";
 import jsan from "jsan";
-import {Observable, Subscription, from, throwError} from "rxjs";
 import {Packr} from "msgpackr";
 import {serializeError} from "serialize-error";
 
+import {curryLogger, curryOwnFunctionMembers} from "../private/util";
 import * as M from "../model";
 import * as PM from "../private/model";
-import {curryLogger, curryOwnFunctionMembers} from "../private/util";
 
 export function buildProviderMethods<AD extends M.ApiDefinition<AD>, ACA extends PM.DefACA | void = void>(
     serviceOptions: M.CreateServiceOptions<AD>,

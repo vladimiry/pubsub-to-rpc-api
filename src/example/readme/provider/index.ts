@@ -1,7 +1,7 @@
-import tcpPing from "tcp-ping";
 import {evaluate} from "maths.ts";
 import {from, merge} from "rxjs";
 import {promisify} from "util";
+import tcpPing from "tcp-ping";
 
 import {API_SERVICE, ScannedApiService} from "../shared";
 import {EM_CLIENT, EM_PROVIDER} from "../shared/event-emitters-mock";

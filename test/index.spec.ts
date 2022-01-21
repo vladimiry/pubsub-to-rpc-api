@@ -1,13 +1,12 @@
-import UUID from "pure-uuid";
+import {ActionType, createService, subscribableLikeToObservable} from "lib";
+import {bufferCount, delay, map, take} from "rxjs/operators";
+import {EventEmitter} from "events";
+import {from, interval, lastValueFrom, merge, of, throwError} from "rxjs";
+import * as PM from "lib/private/model";
 import rewiremock from "rewiremock";
 import sinon from "sinon";
 import test from "ava";
-import {EventEmitter} from "events";
-import {bufferCount, delay, map, take} from "rxjs/operators";
-import {from, interval, lastValueFrom, merge, of, throwError} from "rxjs";
-
-import * as PM from "lib/private/model";
-import {ActionType, createService, subscribableLikeToObservable} from "lib";
+import UUID from "pure-uuid";
 
 // TODO extend test cases:
 //      - a whole emitter/listener.on/off/emit cycle of provider and client

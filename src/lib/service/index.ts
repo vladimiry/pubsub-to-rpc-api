@@ -1,8 +1,8 @@
-import * as M from "../model";
-import * as PM from "../private/model";
 import {buildClientMethods} from "./client";
 import {buildProviderMethods} from "./provider";
 import {curryLogger} from "../private/util";
+import * as M from "../model";
+import * as PM from "../private/model";
 
 export function createService<AD extends M.ApiDefinition<AD>, ACA extends PM.DefACA | void = void>(
     {
