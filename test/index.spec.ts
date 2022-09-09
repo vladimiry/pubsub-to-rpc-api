@@ -170,11 +170,11 @@ test("timeout error", async (t) => {
             lastValueFrom(
                 client(methodObservable)(inputValue),
             ),
-            {message: `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`},
+            {message: `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel, ${timeoutMs}ms timeout`},
         ),
         await t.throwsAsync(
             client(methodPromise)(inputValue),
-            {message: `Invocation timeout of calling "${methodPromise}" method on "${channel}" channel with ${timeoutMs}ms timeout`},
+            {message: `Invocation timeout of calling "${methodPromise}" method on "${channel}" channel, ${timeoutMs}ms timeout`},
         ),
     ]);
 

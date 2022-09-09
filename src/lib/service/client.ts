@@ -1,3 +1,4 @@
+// @transform-path ./../node_modules/serialize-error/index.js
 import {deserializeError} from "serialize-error";
 import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operators";
 import {from, lastValueFrom, NEVER, Observable, race, Subject, throwError, timer} from "rxjs";
@@ -113,7 +114,7 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
                     mergeMap(() => {
                         emitUnsubscribeSignalToProvider({reason: "timeout"});
                         return throwError(() => new Error(
-                            `Invocation timeout of calling "${name}" method on "${emitChannel}" channel with ${timeoutMs}ms timeout`,
+                            `Invocation timeout of calling "${String(name)}" method on "${emitChannel}" channel, ${timeoutMs}ms timeout`,
                         ));
                     }),
                 ),
