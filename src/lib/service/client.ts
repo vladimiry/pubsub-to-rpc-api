@@ -109,38 +109,44 @@ export function buildClientMethods<AD extends M.ApiDefinition<AD>, ACA extends P
                     },
                 } as const;
             })();
-            const result$: Observable<ActionOutput> = race(
-                timer(timeoutMs).pipe(
-                    mergeMap(() => {
-                        emitUnsubscribeSignalToProvider({reason: "timeout"});
-                        return throwError(() => new Error(
-                            `Invocation timeout of calling "${String(name)}" method on "${emitChannel}" channel, ${timeoutMs}ms timeout`,
-                        ));
-                    }),
-                ),
-                observableBundle.observable$.pipe(
-                    map((listenerArgs) => onEventResolver(...(listenerArgs as Exclude<ACA, void>)).payload),
-                    filter(({uid, type}) => uid === request.uid && type === "response"),
-                    takeWhile((payload) => !("complete" in payload && payload.complete)),
-                    mergeMap((payload) => {
-                        if ("data" in payload) {
-                            return [
-                                serialization === "jsan"
-                                    ? jsan.parse(payload.data as unknown as string)
-                                    : (
-                                        // TODO cache/reuse "msgpackr.Packr" instance
-                                        serialization === "msgpackr"
-                                            ? new Packr({structuredClone: true}).unpack(payload.data as unknown as Buffer)
-                                            : payload.data
-                                    ),
-                            ];
-                        }
-                        if ("error" in payload) {
-                            return throwError(() => deserializeError(payload.error));
-                        }
-                        return [void 0]; // "payload.data" is "undefined" ("void" action response type)
-                    }),
-                ),
+            const observable$ = observableBundle.observable$.pipe(
+                map((listenerArgs) => onEventResolver(...(listenerArgs as Exclude<ACA, void>)).payload),
+                filter(({uid, type}) => uid === request.uid && type === "response"),
+                takeWhile((payload) => !("complete" in payload && payload.complete)),
+                mergeMap((payload) => {
+                    if ("data" in payload) {
+                        return [
+                            serialization === "jsan"
+                                ? jsan.parse(payload.data as unknown as string)
+                                : (
+                                    // TODO cache/reuse "msgpackr.Packr" instance
+                                    serialization === "msgpackr"
+                                        ? new Packr({structuredClone: true}).unpack(payload.data as unknown as Buffer)
+                                        : payload.data
+                                ),
+                        ];
+                    }
+                    if ("error" in payload) {
+                        return throwError(() => deserializeError(payload.error));
+                    }
+                    return [void 0]; // "payload.data" is "undefined" ("void" action response type)
+                }),
+            );
+            const result$: Observable<ActionOutput> = (
+                Number(timeoutMs)
+                    ? race(
+                        timer(timeoutMs).pipe(
+                            mergeMap(() => {
+                                emitUnsubscribeSignalToProvider({reason: "timeout"});
+                                return throwError(() => new Error([
+                                    `Invocation timeout of calling "${String(name)}" method `,
+                                    `on "${emitChannel}" channel with ${timeoutMs}ms timeout`,
+                                ].join("")));
+                            }),
+                        ),
+                        observable$,
+                    )
+                    : observable$
             ).pipe(
                 takeUntil<PM.Any>(
                     finishPromise

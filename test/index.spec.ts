@@ -14,7 +14,7 @@ import UUID from "pure-uuid";
 //      - custom "onEventResolver"
 //      - etc
 
-test("calling 3 methods", async (t) => {
+test.serial("calling 3 methods", async (t) => {
     const apiDefinition = {
         method1: ActionType.Promise<{ input1: string }, { output1: number }>(),
         method2: ActionType.Observable<number, { output2: number }>(),
@@ -109,7 +109,7 @@ test("calling 3 methods", async (t) => {
     ));
 });
 
-test("backend error", async (t) => {
+test.serial("backend error", async (t) => {
     const service = createService({
         channel: "channel-345",
         apiDefinition: {
@@ -139,7 +139,7 @@ test("backend error", async (t) => {
     );
 });
 
-test("timeout error", async (t) => {
+test.serial("timeout error", async (t) => {
     const emitter = new EventEmitter();
     const inputValue = 123;
     const timeoutMs = 500;
@@ -170,11 +170,11 @@ test("timeout error", async (t) => {
             lastValueFrom(
                 client(methodObservable)(inputValue),
             ),
-            {message: `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel, ${timeoutMs}ms timeout`},
+            {message: `Invocation timeout of calling "${methodObservable}" method on "${channel}" channel with ${timeoutMs}ms timeout`},
         ),
         await t.throwsAsync(
             client(methodPromise)(inputValue),
-            {message: `Invocation timeout of calling "${methodPromise}" method on "${channel}" channel, ${timeoutMs}ms timeout`},
+            {message: `Invocation timeout of calling "${methodPromise}" method on "${channel}" channel with ${timeoutMs}ms timeout`},
         ),
     ]);
 
@@ -188,7 +188,24 @@ test("timeout error", async (t) => {
     t.is(String(inputValue), res2);
 });
 
-test("calling method without arguments", async (t) => {
+test.serial("zero timeout", async (t) => {
+    const emitter = new EventEmitter();
+    const mockedRxjs = {timer: sinon.spy((await import("rxjs")).timer)} as PM.Any;
+    const {createService: createServiceMocked} = await rewiremock.around(
+        () => import("lib"),
+        (mock) => mock(() => import("rxjs")).callThrough().with(mockedRxjs),
+    );
+    const service = createServiceMocked({channel: "123", apiDefinition: {"method": ActionType.Promise<number, string>()}});
+    service.register({method: async (value) => String(value)}, emitter);
+    const client = service.caller({emitter, listener: emitter});
+    await client("method", {timeoutMs: 111})(123);
+    await client("method", {timeoutMs: 0})(123);
+    await client("method", {timeoutMs: 0})(123);
+    t.true(mockedRxjs.timer.calledWithExactly(111));
+    t.is(mockedRxjs.timer.callCount, 1);
+});
+
+test.serial("calling method without arguments", async (t) => {
     const apiDefinition = {
         methodObservable: ActionType.Observable/* default generics values: <[] , void> */(),
         methodPromise: ActionType.Promise/* default generics values: <[] , void> */(),
@@ -220,7 +237,7 @@ test("calling method without arguments", async (t) => {
     ));
 });
 
-test("stream", async (t) => {
+test.serial("stream", async (t) => {
     const channel = randomStr();
     const service = createService({
         channel,
@@ -252,7 +269,7 @@ test("stream", async (t) => {
     t.deepEqual(expected, actual);
 });
 
-test("preserve references (jsan)", async (t) => {
+test.serial("preserve references (jsan)", async (t) => {
     const {parse, stringify} = await import("jsan");
     const mockedJsan = {
         parse: sinon.spy(parse),
@@ -334,7 +351,7 @@ test("preserve references (jsan)", async (t) => {
     t.true(mockedJsan.parse.alwaysCalledWithExactly(expectedJsanStr));
 });
 
-test("preserve references (msgpackr)", async (t) => {
+test.serial("preserve references (msgpackr)", async (t) => {
     interface O1 {
         n: number;
         o: { s: string };
