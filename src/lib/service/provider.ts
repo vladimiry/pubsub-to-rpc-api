@@ -1,7 +1,7 @@
 import {from, Observable, Subscription, throwError} from "rxjs";
 import jsan from "jsan";
 import {Packr} from "msgpackr";
-// @transform-path ./../node_modules/serialize-error/index.js
+// @transform-path ./../bundled_modules/serialize-error/index.js
 import {serializeError} from "serialize-error";
 
 import {curryLogger, curryOwnFunctionMembers} from "../private/util";

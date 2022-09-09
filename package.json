@@ -1,6 +1,6 @@
 {
   "name": "pubsub-to-rpc-api",
-  "version": "8.0.0",
+  "version": "8.0.1",
   "description": "Converting publish-subscribe/IPC-like interaction model into the request/response model powered by RxJS",
   "author": "Vladimir Yakovlev <dev.vladimir.y@gmail.com> (https://github.com/vladimiry)",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "lib": "npm-run-all lib:clean lint lib:compile test",
     "lib:clean": "rimraf ./lib",
     "lib:compile:1": "ts-patch install",
-    "lib:compile:2": "esbuild node_modules/serialize-error/index.js  --bundle --platform=node --outfile=lib/node_modules/serialize-error/index.js",
+    "lib:compile:2": "esbuild node_modules/serialize-error/index.js  --bundle --platform=node --outfile=lib/bundled_modules/serialize-error/index.js",
     "lib:compile:3": "tsc --listEmittedFiles -p ./src/lib/tsconfig.json",
     "lib:compile": "npm-run-all lib:compile:1 lib:compile:2 lib:compile:3",
     "lint": "npm-run-all lint:lib lint:test lint:example",

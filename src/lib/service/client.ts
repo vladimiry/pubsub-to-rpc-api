@@ -1,4 +1,4 @@
-// @transform-path ./../node_modules/serialize-error/index.js
+// @transform-path ./../bundled_modules/serialize-error/index.js
 import {deserializeError} from "serialize-error";
 import {filter, finalize, map, mergeMap, takeUntil, takeWhile} from "rxjs/operators";
 import {from, lastValueFrom, NEVER, Observable, race, Subject, throwError, timer} from "rxjs";
