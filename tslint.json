@@ -5,6 +5,8 @@
     "./tslint-extending/tslint-consistent-codestyle.json"
   ],
   "rules": {
+    "no-shadowed-variable": false,
+    "no-unnecessary-initializer": false,
     "array-type": [true, "array-simple"],
     "max-line-length": [
       true,
